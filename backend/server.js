@@ -150,26 +150,33 @@ async function startServer() {
       }
     }
 
-    const HTTPS_PORT = process.env.HTTPS_PORT || 3443;
+    const PORT = process.env.PORT || config.PORT || 3000;
+    const HOST = '0.0.0.0';
 
-    server.listen(config.PORT, () => {
-      httpsServer.listen(HTTPS_PORT, () => {
-        console.log(`
+    server.listen(PORT, HOST, () => {
+      console.log(`
   ╔════════════════════════════════════════════════════════════╗
   ║                                                            ║
   ║   SYNCH Server Running!                                    ║
   ║                                                            ║
-  ║   Local HTTP:  http://localhost:${config.PORT}                      ║
-  ║   Local HTTPS: https://localhost:${HTTPS_PORT}                    ║
-  ║   LAN HTTP:    http://${localIp}:${config.PORT}                    ║
-  ║   LAN HTTPS:   https://${localIp}:${HTTPS_PORT} (Recommended for Mic) ║
-  ║                                                            ║
-  ║   Database:    Supabase PostgreSQL                         ║
+  ║   Listen Address: http://${HOST}:${PORT}                   ║
+  ║   Local Access:   http://localhost:${PORT}                 ║
+  ║   LAN Access:     http://${localIp}:${PORT}               ║
   ║                                                            ║
   ╚════════════════════════════════════════════════════════════╝
-        `);
-      });
+      `);
     });
+
+    if (process.env.ENABLE_LOCAL_HTTPS === 'true') {
+      try {
+        const HTTPS_PORT = process.env.HTTPS_PORT || 3443;
+        httpsServer.listen(HTTPS_PORT, HOST, () => {
+          console.log(`LAN HTTPS Server running on https://${HOST}:${HTTPS_PORT}`);
+        });
+      } catch (e) {
+        console.warn('Optional HTTPS server notice:', e.message);
+      }
+    }
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
