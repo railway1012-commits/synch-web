@@ -470,12 +470,14 @@ exports.login = async (req, res) => {
 };
 
 async function verifyGoogleCredential(credential) {
-  if (!googleClient) throw new Error('Google Sign-In is not configured on this server');
-  const ticket = await googleClient.verifyIdToken({
+  const clientId = (process.env.GOOGLE_CLIENT_ID || config.GOOGLE_CLIENT_ID || '').trim();
+  if (!clientId) throw new Error('Google Sign-In is not configured on this server');
+  const client = new OAuth2Client(clientId);
+  const ticket = await client.verifyIdToken({
     idToken: credential,
-    audience: config.GOOGLE_CLIENT_ID
+    audience: clientId
   });
-  return ticket.getPayload(); // { sub, email, name, picture, email_verified }
+  return ticket.getPayload();
 }
 
 // Handles both "sign in with Google" and "sign up with Google" — one endpoint,
