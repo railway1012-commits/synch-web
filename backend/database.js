@@ -5,6 +5,7 @@ const isLocalDb = !process.env.DATABASE_URL ||
   process.env.DATABASE_URL.includes('localhost') || 
   process.env.DATABASE_URL.includes('127.0.0.1') || 
   process.env.DATABASE_URL.includes('host.docker.internal') ||
+  process.env.DATABASE_URL.includes('railway.internal') ||
   process.env.DATABASE_URL.includes('sslmode=disable') ||
   process.env.DB_SSL === 'false';
 
@@ -14,7 +15,14 @@ const pool = new Pool({
 });
 
 async function initDatabase() {
-  const client = await pool.connect();
+  let client;
+  try {
+    client = await pool.connect();
+    console.log('PostgreSQL database connected successfully');
+  } catch (err) {
+    console.error('Database connection failed:', err.message);
+    return;
+  }
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (

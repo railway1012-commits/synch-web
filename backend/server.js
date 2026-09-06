@@ -122,34 +122,6 @@ io.attach(httpsServer);
 
 async function startServer() {
   try {
-    await initDatabase();
-
-    console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'SET' : 'NOT SET');
-    console.log('EMAIL_PASS:', process.env.EMAIL_PASS ? 'SET' : 'NOT SET');
-    console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
-
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      initEmailService({
-        email: process.env.EMAIL_USER,
-        password: process.env.EMAIL_PASS
-      });
-      console.log('Email service initialized with:', process.env.EMAIL_USER);
-    } else {
-      console.log('Email service not configured. Set EMAIL_USER and EMAIL_PASS environment variables.');
-    }
-
-    // Find local network IP
-    let localIp = 'localhost';
-    const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-      for (const iface of interfaces[name]) {
-        if (iface.family === 'IPv4' && !iface.internal) {
-          localIp = iface.address;
-          break;
-        }
-      }
-    }
-
     const PORT = process.env.PORT || config.PORT || 3000;
     const HOST = '0.0.0.0';
 
@@ -165,6 +137,7 @@ async function startServer() {
   ║                                                            ║
   ╚════════════════════════════════════════════════════════════╝
       `);
+      initDatabase().catch(err => console.error('Database init error:', err));
     });
 
     if (process.env.ENABLE_LOCAL_HTTPS === 'true') {
