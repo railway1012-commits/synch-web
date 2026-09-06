@@ -1,0 +1,31 @@
+{
+  "name": "SYNCH",
+  "short_name": "SYNCH",
+  "description": "Real-time messaging made simple",
+  "start_url": "/chat.html",
+  "display": "standalone",
+  "background_color": "#0a0e14",
+  "theme_color": "#0084FF",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["social", "communication"],
+  "shortcuts": [
+    {
+      "name": "New Chat",
+      "url": "/chat.html?action=new",
+      "description": "Start a new conversation"
+    },
+    {
+      "name": "Settings",
+      "url": "/settings.html",
+      "description": "Open settings"
+    }
+  ]
+}

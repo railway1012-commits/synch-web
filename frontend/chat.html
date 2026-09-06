@@ -1,0 +1,1815 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0084FF">
+  <title>SYNCH - Chat</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/main.css?v=55">
+  <link rel="stylesheet" href="css/chat.css?v=55">
+  <link rel="stylesheet" href="css/settings.css?v=55">
+</head>
+<body>
+  <a href="#messagesContainer" class="skip-link">Skip to messages</a>
+
+  <!-- Universal Floating Green Call Banner (Top of Viewport) -->
+  <div class="universal-call-banner" id="universalCallBanner" style="display: none;">
+    <div class="call-banner-left" id="callBannerClickArea">
+      <div class="call-banner-icon-pulse">
+        <svg class="call-banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
+      </div>
+      <div class="call-banner-info">
+        <div class="call-banner-title">
+          <strong id="callBannerName">Username</strong>
+          <span class="call-banner-type-badge" id="callBannerTypeBadge">Audio Call</span>
+        </div>
+        <div class="call-banner-status" id="callBannerStatus">Incoming call • Tap to answer</div>
+      </div>
+    </div>
+    <div class="call-banner-actions">
+      <button class="call-banner-btn btn-banner-accept" id="bannerAcceptBtn" title="Answer Call">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
+        <span>Answer</span>
+      </button>
+      <button class="call-banner-btn btn-banner-decline" id="bannerDeclineBtn" title="Decline">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+      <button class="call-banner-btn btn-banner-end" id="bannerEndBtn" title="End Call" style="display: none;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/>
+          <line x1="23" y1="1" x2="1" y2="23"/>
+        </svg>
+        <span>End</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Full Page Loading Overlay -->
+  <div class="page-loading-overlay" id="pageLoadingOverlay">
+
+    <div class="page-loading-content">
+      <div class="loading-spinner"></div>
+      <p id="pageLoadingText">Loading...</p>
+    </div>
+  </div>
+
+  <div class="chat-app">
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- 1. Far-Left Navigation Rail (64px) -->
+    <nav class="app-rail" id="appRail" aria-label="Main Navigation">
+      <div class="rail-top">
+        <div class="rail-logo" title="SYNCH">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="rail-logo-icon">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <button class="rail-btn active" id="railChatsBtn" title="Chats" aria-label="Chats">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span class="rail-badge" id="railUnreadBadge" style="display: none;">0</span>
+          <span class="rail-tooltip">Chats</span>
+        </button>
+        <button class="rail-btn" id="railNewChatBtn" title="Add Friends" aria-label="Add Friends & Connect">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          <span class="rail-badge" id="railFriendReqBadge" style="display: none;">0</span>
+          <span class="rail-tooltip">Add Friends</span>
+        </button>
+      </div>
+
+      <div class="rail-bottom" style="display: flex; flex-direction: column; gap: 8px; align-items: center;">
+        <button class="rail-btn rail-profile-btn" id="railProfileBtn" title="Profile & Settings" aria-label="Profile & Settings">
+          <div class="avatar avatar-sm" id="railAvatar">U</div>
+          <span class="rail-status-dot" id="railStatusDot"></span>
+          <span class="rail-tooltip">Profile & Settings</span>
+        </button>
+        <button class="rail-btn" id="railDirectLogoutBtn" title="Log Out" aria-label="Log Out" style="color: var(--danger, #ef4444);">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          <span class="rail-tooltip">Log Out</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- 2. Dual-Mode Left Sidebar (340px) -->
+    <aside class="sidebar" id="sidebar">
+      <!-- (A) CHATS SIDEBAR VIEW -->
+      <div class="sidebar-view" id="chatsSidebarView">
+        <div class="sidebar-header">
+          <div class="sidebar-top">
+            <h2 class="sidebar-heading">Chats</h2>
+            <div style="display: flex; gap: 6px;">
+              <button class="btn-icon" id="newGroupBtn" title="Create Group Chat" aria-label="Create group chat">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="search-box">
+            <svg class="search-box-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="searchChats" placeholder="Search conversations..." aria-label="Search conversations">
+          </div>
+          <div class="chat-filter-pills">
+            <button class="filter-pill active" id="filterAllChats" data-filter="all">All</button>
+            <button class="filter-pill" id="filterUnreadChats" data-filter="unread">Unread</button>
+          </div>
+        </div>
+
+        <!-- Notification Warning Banner -->
+        <div class="notif-warning-banner" id="notifWarningBanner" style="display: none;" title="Click to enable notifications">
+          <div class="notif-warning-icon" id="notifBannerIcon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              <path d="M18.63 13A17.89 17.89 0 0 1 18 8"/>
+              <path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/>
+              <line x1="1" y1="1" x2="23" y2="23"/>
+            </svg>
+          </div>
+          <div class="notif-warning-content">
+            <div class="notif-warning-title" id="notifBannerTitle">Notifications are off</div>
+            <div class="notif-warning-desc" id="notifBannerDesc">Click to turn on notifications</div>
+          </div>
+          <button class="notif-warning-close" id="notifBannerCloseBtn" title="Dismiss" aria-label="Dismiss">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="chat-list" id="chatList">
+          <div class="loading">
+            <div class="loading-spinner"></div>
+            <span>Loading...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- (B) PROFILE & SETTINGS SIDEBAR VIEW -->
+      <div class="sidebar-view" id="settingsSidebarView" style="display: none;">
+        <div class="sidebar-header settings-sidebar-header">
+          <div class="sidebar-top">
+            <h2 class="sidebar-heading" id="settingsSidebarHeading">Settings</h2>
+          </div>
+          <div class="search-box">
+            <svg class="search-box-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="searchSettings" placeholder="Search settings..." aria-label="Search settings">
+          </div>
+        </div>
+
+        <div class="settings-sidebar-scroll">
+          <!-- Profile Hero Card (WhatsApp Style) -->
+          <div class="settings-hero-card">
+            <div class="settings-hero-avatar-wrapper">
+              <div class="avatar avatar-xl" id="settingsHeroAvatar">U</div>
+              <label class="settings-avatar-edit-badge" for="avatarInput" title="Change photo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+              </label>
+            </div>
+            <div class="settings-hero-info">
+              <h3 class="settings-hero-name" id="settingsHeroName">Username</h3>
+              <p class="settings-hero-email" id="settingsHeroEmail">email@example.com</p>
+              <div class="settings-hero-badge-row">
+                <span class="settings-hero-status-badge">Online</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Settings Category Items -->
+          <nav class="settings-categories-nav" id="settingsCategoriesNav">
+            <div class="settings-cat-item active" data-section="account">
+              <div class="settings-cat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 2l-2 2m-1.5 1.5L10 13l-4 1 1-4 7.5-7.5"/>
+                  <circle cx="7.5" cy="16.5" r="4.5"/>
+                </svg>
+              </div>
+              <div class="settings-cat-info">
+                <h4>Account & Security</h4>
+                <p>Google Account, password, 2FA, sessions</p>
+              </div>
+            </div>
+
+            <div class="settings-cat-item" data-section="profile">
+              <div class="settings-cat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                  <circle cx="12" cy="7" r="4"/>
+                </svg>
+              </div>
+              <div class="settings-cat-info">
+                <h4>Profile</h4>
+                <p>Name, avatar, Synch ID, email</p>
+              </div>
+            </div>
+
+            <div class="settings-cat-item" data-section="privacy">
+              <div class="settings-cat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+              </div>
+              <div class="settings-cat-info">
+                <h4>Privacy</h4>
+                <p>Blocked contacts, online status, read receipts</p>
+              </div>
+            </div>
+
+            <div class="settings-cat-item" data-section="appearance">
+              <div class="settings-cat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="5"/>
+                  <line x1="12" y1="1" x2="12" y2="3"/>
+                  <line x1="12" y1="21" x2="12" y2="23"/>
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                  <line x1="1" y1="12" x2="3" y2="12"/>
+                  <line x1="21" y1="12" x2="23" y2="12"/>
+                </svg>
+              </div>
+              <div class="settings-cat-info">
+                <h4>Chats & Appearance</h4>
+                <p>Theme, accent colors, bubble style, fonts</p>
+              </div>
+            </div>
+
+            <div class="settings-cat-item" data-section="notifications">
+              <div class="settings-cat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+              </div>
+              <div class="settings-cat-info">
+                <h4>Notifications</h4>
+                <p>Sounds, volume, desktop alerts</p>
+              </div>
+            </div>
+
+            <div class="settings-cat-item" data-section="advanced">
+              <div class="settings-cat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+              </div>
+              <div class="settings-cat-info">
+                <h4>Data & Storage</h4>
+                <p>Export chat data, clear history</p>
+              </div>
+            </div>
+            <div class="settings-cat-item" id="settingsReportProblemBtn">
+              <div class="settings-cat-icon" style="color: var(--warning, #f59e0b);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                  <line x1="4" y1="22" x2="4" y2="15"/>
+                </svg>
+              </div>
+              <div class="settings-cat-info">
+                <h4>Help & Report Problem</h4>
+                <p>Report a bug, user, or safety issue</p>
+              </div>
+            </div>
+
+            <div class="settings-cat-item danger" id="settingsLogoutBtn">
+
+              <div class="settings-cat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                  <polyline points="16 17 21 12 16 7"/>
+                  <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+              </div>
+              <div class="settings-cat-info">
+                <h4>Log Out</h4>
+                <p>Sign out from this device</p>
+              </div>
+            </div>
+          </nav>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 3. Right Main Content Area -->
+    <main class="main-content" id="mainContent">
+      <!-- (A) CHATS MAIN VIEW -->
+      <div class="main-view-panel active" id="chatsMainView">
+        <!-- No Chat Selected -->
+        <div class="no-chat-selected" id="noChatSelected">
+          <!-- Mobile Header for empty state -->
+          <div class="no-chat-mobile-header">
+            <button class="btn-icon" id="mobileMenuBtnEmpty">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            </button>
+            <span class="sidebar-logo">SYNCH</span>
+            <div class="header-actions">
+              <button class="btn-icon" id="newChatBtnMobile" title="New Chat">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="no-chat-illustration">
+            <div class="no-chat-icon-circle">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <h2>Welcome to SYNCH</h2>
+            <p>Select a conversation from the left or start a new chat with your friends.</p>
+            <button class="btn btn-primary btn-sm" id="emptyStateNewChatBtn" style="margin-top: 16px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; margin-right: 6px;">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Start New Chat
+            </button>
+          </div>
+        </div>
+
+        <!-- Chat View -->
+        <div class="chat-view" id="chatView" style="display: none;">
+          <header class="chat-header">
+            <div class="chat-header-left">
+              <button class="btn-icon back-btn" id="backToChatsBtn" style="display: none;" aria-label="Back to chat list">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
+              </button>
+              <div class="chat-user-info" id="chatUserInfo" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                <div class="avatar" id="chatAvatar">U</div>
+                <div class="chat-header-info">
+                  <div class="chat-header-name" id="chatName">Username</div>
+                  <div class="chat-header-status" id="chatStatus">Online</div>
+                </div>
+              </div>
+            </div>
+            <div class="chat-header-actions">
+              <button class="btn-icon" id="startVoiceCallBtn" title="Audio Call" aria-label="Start audio call">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                </svg>
+              </button>
+              <button class="btn-icon" id="startVideoCallBtn" title="Video Call" aria-label="Start video call">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="23 7 16 12 23 17 23 7"/>
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                </svg>
+              </button>
+              <button class="btn-icon" id="searchMessagesBtn" title="Search messages" aria-label="Search messages">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+              </button>
+              <button class="btn-icon" id="chatMenuBtn" title="More options" aria-label="Chat options menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="1"/>
+                  <circle cx="12" cy="5" r="1"/>
+                  <circle cx="12" cy="19" r="1"/>
+                </svg>
+              </button>
+            </div>
+          </header>
+
+          <!-- Message Search Bar -->
+          <div class="message-search-bar" id="messageSearchBar" style="display: none;">
+            <input type="text" id="messageSearchInput" placeholder="Search in conversation..." aria-label="Search messages">
+            <span class="search-results-count" id="searchResultsCount"></span>
+            <button class="btn-icon btn-sm" id="searchPrevBtn" aria-label="Previous result" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+            </button>
+            <button class="btn-icon btn-sm" id="searchNextBtn" aria-label="Next result" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <button class="btn-icon btn-sm" id="closeSearchBtn" aria-label="Close search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <div class="messages-container" id="messagesContainer" role="log" aria-live="polite" aria-label="Chat messages"></div>
+
+          <!-- Scroll to bottom button -->
+          <button class="scroll-to-bottom" id="scrollToBottomBtn" aria-label="Scroll to latest messages" style="display: none;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+
+          <div class="typing-indicator" id="typingIndicator" style="display: none;">
+            <div class="typing-dots">
+              <span></span><span></span><span></span>
+            </div>
+            <span id="typingText">Someone is typing...</span>
+          </div>
+
+          <div class="message-input-container">
+            <div class="reply-preview" id="replyPreview">
+              <div class="reply-preview-content">
+                <div class="reply-preview-name" id="replyName">Replying to</div>
+                <div class="reply-preview-text" id="replyText">Message</div>
+              </div>
+              <button class="reply-preview-close" id="cancelReply">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="message-input-wrapper">
+              <div class="input-actions">
+                <button id="attachImage" title="Attach image" aria-label="Attach image">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                </button>
+                <button id="attachDoc" title="Attach file or video" aria-label="Attach file">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                  </svg>
+                </button>
+                <button id="recordVoice" title="Record voice message" aria-label="Record voice message">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                  </svg>
+                </button>
+                <button id="emojiPicker" title="Add emoji" aria-label="Open emoji picker">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                    <line x1="9" y1="9" x2="9.01" y2="9"/>
+                    <line x1="15" y1="9" x2="15.01" y2="9"/>
+                  </svg>
+                </button>
+              </div>
+              <input type="file" id="imageInput" accept="image/*" style="display: none;">
+              <input type="file" id="docInput" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.json,.csv,video/*" style="display: none;">
+
+
+              <div class="voice-recorder" id="voiceRecorder">
+                <span class="voice-recorder-time" id="recordTime">0:00</span>
+                <div class="voice-recorder-wave">
+                  <span></span><span></span><span></span><span></span><span></span>
+                </div>
+                <button id="cancelRecord" class="btn-icon" style="background: var(--danger); color: #fff;" aria-label="Cancel recording">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+
+              <textarea id="messageInput" placeholder="Type a message..." rows="1" aria-label="Message input"></textarea>
+
+              <button id="sendBtn" disabled aria-label="Send message">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"/>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="emoji-picker" id="emojiPickerPanel">
+              <div class="emoji-grid" id="emojiGrid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- (B) PROFILE & SETTINGS MAIN VIEW (Sub-settings displayed on right) -->
+      <div class="main-view-panel" id="settingsMainView" style="display: none;">
+        <div class="settings-mobile-header" id="settingsMobileHeader">
+          <button class="btn-icon" id="settingsMobileBackBtn" title="Back to Settings" aria-label="Back to Settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+          </button>
+          <span class="settings-mobile-title" id="settingsMobileTitle">Settings</span>
+        </div>
+        <div class="settings-content-container">
+
+          <!-- 1. Account & Security Sub-Section -->
+          <section class="settings-detail-section active" id="sec-account">
+            <div class="settings-detail-header">
+              <h2>Account & Security</h2>
+              <p>Manage your account credentials, connections, and active devices</p>
+            </div>
+
+            <div class="settings-card-group">
+              <h3>Authentication</h3>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Google Account</h4>
+                  <p id="googleStatusText">Checking connection...</p>
+                </div>
+                <button class="btn btn-secondary btn-sm" id="googleConnectBtn">Connect</button>
+              </div>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4 id="passwordRowTitle">Password</h4>
+                  <p id="passwordRowDesc">Change your login password</p>
+                </div>
+                <button class="btn btn-secondary btn-sm" id="changePasswordBtn">Change</button>
+              </div>
+              <div class="settings-item-row settings-item-clickable" id="open2FASettingsRow" style="cursor: pointer;">
+                <div class="settings-row-info">
+                  <h4>Two-Factor Authentication</h4>
+                  <p id="twoFactorStatusOverview">Extra security for your logins</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="badge" id="twoFactorStatusBadge" style="font-size: 11px; padding: 3px 8px; border-radius: 6px; font-weight: 600;">Off</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px; color: var(--text-secondary);">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-card-group">
+              <h3>Active Sessions</h3>
+              <div id="sessionsList">
+                <div class="loading"><div class="loading-spinner"></div></div>
+              </div>
+            </div>
+
+            <div class="settings-card-group danger-group">
+              <h3>Danger Zone</h3>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Delete Account</h4>
+                  <p>Permanently remove your account and all data</p>
+                </div>
+                <button class="btn btn-danger btn-sm" id="deleteAccountBtn">Delete Account</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 1b. Two-Factor Authentication Dedicated Sub-Section -->
+          <section class="settings-detail-section" id="sec-2fa">
+            <div class="settings-detail-header" style="margin-bottom: 20px;">
+              <button type="button" class="btn btn-secondary btn-sm" id="backToAccountSecurityBtn" style="margin-bottom: 12px; display: inline-flex; align-items: center; gap: 6px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
+                <span>Back to Account & Security</span>
+              </button>
+              <h2>Two-Factor Authentication</h2>
+              <p>Add an extra layer of protection when signing in to your SYNCH account</p>
+            </div>
+
+            <!-- Master Toggle Card -->
+            <div class="settings-card-group">
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Enable Two-Factor Authentication</h4>
+                  <p>Require verification when signing in from a new device or browser</p>
+                </div>
+                <div class="toggle" id="twoFactorMasterToggle"></div>
+              </div>
+            </div>
+
+            <!-- Methods Group -->
+            <div class="settings-card-group" id="twoFactorMethodsContainer">
+              <div class="settings-card-group-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="margin-bottom: 0;">Verification Methods</h3>
+                <span class="badge badge-primary" id="methodsActiveBadge" style="font-size: 11px; padding: 2px 8px; border-radius: 6px;">Active</span>
+              </div>
+              <div id="twoFactorDisabledNotice" class="methods-disabled-notice" style="display: none; padding: 12px 14px; background: rgba(148, 163, 184, 0.08); border-radius: 10px; margin-bottom: 12px; font-size: var(--font-xs); color: var(--text-secondary);">
+                Turn on Two-Factor Authentication above to enable these verification options.
+              </div>
+
+              <!-- Method 1: On-Device Confirmation -->
+              <div class="settings-item-row method-card-row" style="padding: 14px 16px; gap: 14px;">
+                <div style="width: 38px; height: 38px; border-radius: 10px; background: rgba(0, 132, 255, 0.12); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                    <line x1="12" y1="18" x2="12.01" y2="18"/>
+                  </svg>
+                </div>
+                <div class="settings-row-info" style="flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 3px;">
+                    <h4>On-Device Confirmation</h4>
+                    <span class="badge badge-primary" style="font-size: 10px; padding: 2px 6px; border-radius: 4px;">Recommended</span>
+                  </div>
+                  <p>Receive an interactive approval prompt on your active phone or PC when signing in.</p>
+                </div>
+                <span class="status-indicator-badge" style="color: var(--success, #10b981); font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 15px; height: 15px;"><polyline points="20 6 9 17 4 12"/></svg>
+                  Available
+                </span>
+              </div>
+
+              <!-- Method 2: Email Code -->
+              <div class="settings-item-row method-card-row" style="padding: 14px 16px; gap: 14px;">
+                <div style="width: 38px; height: 38px; border-radius: 10px; background: rgba(168, 85, 247, 0.12); color: #a855f7; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                  </svg>
+                </div>
+                <div class="settings-row-info" style="flex: 1;">
+                  <h4 style="margin-bottom: 3px;">Email Verification Code</h4>
+                  <p>Receive a 6-digit one-time passcode at <span id="twoFactorEmailMasked" style="font-weight: 500;">your email</span>.</p>
+                </div>
+                <span class="status-indicator-badge" style="color: var(--success, #10b981); font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 15px; height: 15px;"><polyline points="20 6 9 17 4 12"/></svg>
+                  Available
+                </span>
+              </div>
+
+              <!-- Method 3: Authenticator App -->
+              <div class="settings-item-row method-card-row" style="padding: 14px 16px; gap: 14px;">
+                <div style="width: 38px; height: 38px; border-radius: 10px; background: rgba(34, 197, 94, 0.12); color: var(--success); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                </div>
+                <div class="settings-row-info" style="flex: 1;">
+                  <h4 style="margin-bottom: 3px;">Authenticator App</h4>
+                  <p>Use an app like Google Authenticator or Authy to generate codes.</p>
+                </div>
+                <button class="btn btn-secondary btn-sm" id="setupAuthenticatorBtn">Set Up</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 2. Profile Sub-Section -->
+          <section class="settings-detail-section" id="sec-profile">
+            <div class="settings-detail-header">
+              <h2>Profile Details</h2>
+              <p>Your personal account details</p>
+            </div>
+
+            <div class="settings-card-group">
+              <h3>Identity</h3>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Username</h4>
+                  <p id="profileUsernameDisplay">@username</p>
+                </div>
+                <div class="row-buttons">
+                  <button class="btn btn-secondary btn-sm" id="copySynchIdBtn">Copy</button>
+                  <button class="btn btn-secondary btn-sm" id="changeUsernameBtn">Change</button>
+                </div>
+              </div>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Email Address</h4>
+                  <p id="profileEmailDisplay">email@example.com</p>
+                </div>
+                <span class="badge-verified">Verified</span>
+              </div>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Profile Picture</h4>
+                  <p>Upload a custom avatar image</p>
+                </div>
+                <label class="btn btn-secondary btn-sm" for="avatarInput" style="cursor: pointer;">Upload Photo</label>
+              </div>
+            </div>
+          </section>
+
+          <!-- 3. Privacy Sub-Section -->
+          <section class="settings-detail-section" id="sec-privacy">
+            <div class="settings-detail-header">
+              <h2>Privacy & Visibility</h2>
+              <p>Control who can see your activity and manage blocked contacts</p>
+            </div>
+
+            <div class="settings-card-group">
+              <h3>Activity Status</h3>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Online Status</h4>
+                  <p>Let contacts know when you are active</p>
+                </div>
+                <div class="toggle active" id="onlineStatusToggle" data-setting="showOnlineStatus"></div>
+              </div>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Read Receipts</h4>
+                  <p>Show double checkmarks when messages are read</p>
+                </div>
+                <div class="toggle active" id="readReceiptsToggle" data-setting="showReadReceipts"></div>
+              </div>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Last Seen</h4>
+                  <p>Display your last active timestamp</p>
+                </div>
+                <div class="toggle active" id="lastSeenToggle" data-setting="showLastSeen"></div>
+              </div>
+            </div>
+
+            <div class="settings-card-group">
+              <h3>Blocked Contacts</h3>
+              <div id="blockedUsersList">
+                <div class="empty-state" style="padding: 24px;"><p>No blocked users</p></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 4. Chats & Appearance Sub-Section -->
+          <section class="settings-detail-section" id="sec-appearance">
+            <div class="settings-detail-header">
+              <h2>Chats & Appearance</h2>
+              <p>Customize themes, colors, and chat behavior</p>
+            </div>
+
+            <div class="settings-card-group">
+              <h3>App Theme</h3>
+              <div class="theme-selector" id="themeSelector">
+                <button class="theme-option" data-theme="light">
+                  <svg class="theme-option-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="5"/>
+                    <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                    <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                  </svg>
+                  Light
+                </button>
+                <button class="theme-option active" data-theme="dark">
+                  <svg class="theme-option-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                  </svg>
+                  Dark
+                </button>
+                <button class="theme-option" data-theme="system">
+                  <svg class="theme-option-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="3" width="20" height="14" rx="2"/>
+                    <line x1="8" y1="21" x2="16" y2="21"/>
+                    <line x1="12" y1="17" x2="12" y2="21"/>
+                  </svg>
+                  System
+                </button>
+              </div>
+            </div>
+
+            <div class="settings-card-group">
+              <h3>Accent Color</h3>
+              <div class="color-picker">
+                <div class="color-option active" style="background: #0084FF;" data-color="#0084FF"></div>
+                <div class="color-option" style="background: #22c55e;" data-color="#22c55e"></div>
+                <div class="color-option" style="background: #f59e0b;" data-color="#f59e0b"></div>
+                <div class="color-option" style="background: #ef4444;" data-color="#ef4444"></div>
+                <div class="color-option" style="background: #a855f7;" data-color="#a855f7"></div>
+              </div>
+            </div>
+
+            <div class="settings-card-group">
+              <h3>Typography & Style</h3>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Font Size</h4>
+                  <p>Scale message text sizing</p>
+                </div>
+                <div class="settings-dropdown-wrapper" id="fontSizeDropdownContainer"></div>
+              </div>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Bubble Style</h4>
+                  <p>Choose message bubble appearance</p>
+                </div>
+                <div class="settings-dropdown-wrapper" id="bubbleStyleDropdownContainer"></div>
+              </div>
+            </div>
+
+            <div class="settings-card-group">
+              <h3>Chat Actions</h3>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Enter to Send</h4>
+                  <p>Send messages instantly with Enter key</p>
+                </div>
+                <div class="toggle active" id="enterToSendToggle" data-setting="enterToSend"></div>
+              </div>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Auto-Download Media</h4>
+                  <p>Automatically load photos and voice notes</p>
+                </div>
+                <div class="toggle active" id="mediaAutoDownloadToggle" data-setting="mediaAutoDownload"></div>
+              </div>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Message Preview</h4>
+                  <p>Display message snippet in notifications</p>
+                </div>
+                <div class="toggle active" id="messagePreviewToggle" data-setting="messagePreview"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 5. Notifications Sub-Section -->
+          <section class="settings-detail-section" id="sec-notifications">
+            <div class="settings-detail-header">
+              <h2>Notifications & Sounds</h2>
+              <p>Manage how and when SYNCH notifies you</p>
+            </div>
+
+            <div class="settings-card-group">
+              <h3>Sounds</h3>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Message Sound</h4>
+                  <p>Play chime when a message arrives</p>
+                </div>
+                <div class="toggle active" id="messageSoundToggle" data-setting="messageSound"></div>
+              </div>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Notification Volume</h4>
+                  <p>Adjust alert audio volume</p>
+                </div>
+                <div class="range-input">
+                  <input type="range" id="volumeRange" min="0" max="100" value="50">
+                  <span class="range-value" id="volumeValue">50%</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-card-group">
+              <h3>Desktop</h3>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Desktop Notifications</h4>
+                  <p>Show OS popup notifications for messages</p>
+                </div>
+                <div class="toggle active" id="desktopNotificationsToggle" data-setting="desktopNotifications"></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 6. Data & Storage Sub-Section -->
+          <section class="settings-detail-section" id="sec-advanced">
+            <div class="settings-detail-header">
+              <h2>Data & Storage</h2>
+              <p>Export your data archive or manage storage</p>
+            </div>
+
+            <div class="settings-card-group">
+              <h3>Export</h3>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Export Chat Data</h4>
+                  <p>Download your complete account and chat history in JSON</p>
+                </div>
+                <button class="btn btn-secondary btn-sm" id="exportDataBtn">Export Data</button>
+              </div>
+            </div>
+
+            <div class="settings-card-group danger-group">
+              <h3>Clear History</h3>
+              <div class="settings-item-row">
+                <div class="settings-row-info">
+                  <h4>Clear All Chats</h4>
+                  <p>Wipe all stored conversations and messages</p>
+                </div>
+                <button class="btn btn-danger btn-sm" id="clearChatsBtn">Clear All</button>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+    </main>
+
+    <!-- Context Menus -->
+    <div class="context-menu" id="contextMenu">
+      <div class="context-menu-item" data-action="reply">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
+        </svg>
+        <span>Reply</span>
+      </div>
+      <div class="context-menu-item" data-action="copy">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        <span>Copy</span>
+      </div>
+      <div class="context-menu-item" data-action="react">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+        </svg>
+        <span>React</span>
+      </div>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item" data-action="edit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+        <span>Edit</span>
+      </div>
+      <div class="context-menu-item danger" data-action="delete">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+        </svg>
+        <span>Delete</span>
+      </div>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item" data-action="report-message" style="color: var(--warning, #f59e0b);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+          <line x1="4" y1="22" x2="4" y2="15"/>
+        </svg>
+        <span>Report Message</span>
+      </div>
+    </div>
+
+
+    <!-- Reaction Menu -->
+    <div class="context-menu" id="reactionMenu" style="padding: 12px;">
+      <div class="emoji-grid" style="grid-template-columns: repeat(6, 1fr);">
+        <button class="emoji-btn" data-emoji="👍">👍</button>
+        <button class="emoji-btn" data-emoji="❤️">❤️</button>
+        <button class="emoji-btn" data-emoji="😂">😂</button>
+        <button class="emoji-btn" data-emoji="😮">😮</button>
+        <button class="emoji-btn" data-emoji="😢">😢</button>
+        <button class="emoji-btn" data-emoji="🔥">🔥</button>
+      </div>
+    </div>
+
+    <!-- Chat Context Menu -->
+    <div class="context-menu" id="chatContextMenu">
+      <div class="context-menu-item" data-action="open">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span>Open Chat</span>
+      </div>
+      <div class="context-menu-item" data-action="mark-read">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <span>Mark as Read</span>
+      </div>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item danger" data-action="delete-chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+        </svg>
+        <span>Delete Chat</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden File Input for Avatar -->
+  <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+  <input type="file" id="imageInput" accept="image/*" style="display: none;">
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- ALL POPUPS & MODALS -->
+
+  <!-- 1. Find & Connect / New Chat Modal -->
+  <div class="modal-overlay" id="newChatModal">
+    <div class="modal new-chat-modal" style="max-width: 580px; width: 95%; max-height: 85vh; display: flex; flex-direction: column;">
+      <div class="modal-header" style="padding-bottom: 12px;">
+        <h2>Find & Connect</h2>
+        <button class="modal-close" data-close="newChatModal" aria-label="Close modal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Horizontal 3 Tabs Nav -->
+      <div class="connect-tabs-nav" id="connectTabsNav" style="display: flex; gap: 8px; margin-bottom: 14px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+        <button class="connect-tab-btn active" data-tab="tab-discover">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px; margin-right: 6px;">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          Search & Discover
+        </button>
+        <button class="connect-tab-btn" data-tab="tab-incoming">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px; margin-right: 6px;">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/>
+          </svg>
+          Incoming <span class="tab-badge" id="incomingReqBadge" style="display: none;">0</span>
+        </button>
+        <button class="connect-tab-btn" data-tab="tab-outgoing">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px; margin-right: 6px;">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="18" y1="8" x2="23" y2="13"/><line x1="23" y1="8" x2="18" y2="13"/>
+          </svg>
+          Outgoing <span class="tab-badge" id="outgoingReqBadge" style="display: none;">0</span>
+        </button>
+      </div>
+
+      <!-- Tab 1: Discover & Search -->
+      <div class="connect-tab-pane active" id="tab-discover" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+        <div class="input-group" style="margin-bottom: 8px;">
+          <input type="text" id="searchUsers" placeholder="Search by username or Synch ID..." autocomplete="off">
+        </div>
+        <div id="discoverSectionLabel" style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 6px 0 8px;">
+          Recommended
+        </div>
+        <div class="user-list" id="userList" style="flex: 1; overflow-y: auto; max-height: 360px;">
+          <div class="loading"><div class="loading-spinner"></div></div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Incoming Requests -->
+      <div class="connect-tab-pane" id="tab-incoming" style="display: none; flex-direction: column; flex: 1; min-height: 0;">
+        <div class="user-list" id="incomingReqList" style="flex: 1; overflow-y: auto; max-height: 410px;">
+          <div class="loading"><div class="loading-spinner"></div></div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Outgoing Requests -->
+      <div class="connect-tab-pane" id="tab-outgoing" style="display: none; flex-direction: column; flex: 1; min-height: 0;">
+        <div class="user-list" id="outgoingReqList" style="flex: 1; overflow-y: auto; max-height: 410px;">
+          <div class="loading"><div class="loading-spinner"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Real-Time Incoming Friend Request Floating Notification Container -->
+  <div id="friendReqToastContainer" class="freq-toast-container"></div>
+
+  <!-- 2. Contact Info / Profile Card Modal -->
+  <div class="modal-overlay" id="userInfoModal">
+    <div class="modal contact-profile-modal">
+      <!-- Profile Hero Banner -->
+      <div class="profile-hero-banner">
+        <button class="modal-close profile-banner-close" data-close="userInfoModal" aria-label="Close modal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Avatar & Identity Section -->
+      <div class="profile-hero-content">
+        <div class="profile-avatar-wrapper">
+          <div class="avatar profile-avatar-lg" id="userInfoAvatar">U</div>
+          <div class="profile-status-ring online" id="userInfoStatusRing"></div>
+        </div>
+
+        <div class="profile-identity-info">
+          <h2 class="profile-display-name" id="userInfoUsername">Username</h2>
+          
+          <div class="profile-meta-row">
+            <button class="profile-id-chip" id="copySynchIdFromModal" title="Click to copy username">
+              <span id="userInfoSynchId">@username</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="copy-icon">
+                <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+            </button>
+            <span class="profile-presence-pill online" id="userInfoPresencePill">
+              <span class="presence-indicator-dot"></span>
+              <span id="userInfoStatus">Online</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Toolbar -->
+      <div class="profile-actions-toolbar" id="userInfoActionsToolbar">
+        <button class="profile-tool-btn" id="modalMessageBtn" title="Direct Message">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span>Message</span>
+        </button>
+        <button class="profile-tool-btn" id="modalAudioCallBtn" title="Start Audio Call">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+          </svg>
+          <span>Call</span>
+        </button>
+        <button class="profile-tool-btn" id="exportChatBtn" title="Export Conversation">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span>Export</span>
+        </button>
+        <button class="profile-tool-btn danger" id="blockUserBtn" title="Block User">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+          </svg>
+          <span id="blockBtnText">Block</span>
+        </button>
+        <button class="profile-tool-btn" id="reportUserModalBtn" title="Report User" style="color: var(--warning, #f59e0b);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+            <line x1="4" y1="22" x2="4" y2="15"/>
+          </svg>
+          <span>Report</span>
+        </button>
+      </div>
+
+
+      <!-- Modal Body Sections -->
+      <div class="profile-card-body">
+        <!-- Stranger Notice (When not friends) -->
+        <div class="profile-stranger-card" id="userInfoStrangerNotice" style="display: none;">
+          <div class="stranger-icon">👋</div>
+          <div class="stranger-text">
+            <h4>Not in your contacts</h4>
+            <p>Connect with a friend request to start chatting and customize private notes.</p>
+          </div>
+        </div>
+
+        <!-- Personalization Card (Private to You - Only when friends) -->
+        <div class="profile-section-card" id="userInfoNicknameGroup">
+          <div class="section-card-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="section-icon">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <span>Personalization (Only Visible to You)</span>
+          </div>
+
+          <div class="profile-input-field">
+            <label for="nicknameInput">Personal Nickname</label>
+            <input type="text" id="nicknameInput" placeholder="Add a custom nickname (e.g. Best Friend, Alex)">
+          </div>
+
+          <div class="profile-input-field" style="margin-bottom: 0;">
+            <label for="contactNoteInput">Private Notes</label>
+            <textarea id="contactNoteInput" placeholder="Write notes about this contact..." rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer Buttons -->
+      <div class="modal-actions" style="padding: 16px 20px 20px; border-top: 1px solid var(--border-color); background: var(--bg-secondary);">
+        <button class="btn btn-secondary" data-close="userInfoModal">Close</button>
+        <button class="btn btn-primary" id="saveNicknameBtn">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Verify Password Modal (For Google Connect / Disconnect) -->
+  <div class="modal-overlay" id="googlePasswordModal">
+    <div class="modal" style="max-width: 400px;">
+      <div class="modal-header">
+        <h2 id="googlePasswordModalTitle">Verify your password</h2>
+        <button class="modal-close" data-close="googlePasswordModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <p id="googlePasswordModalDesc" style="color: var(--text-secondary); font-size: var(--font-sm); margin-bottom: 16px;">Enter your password to continue.</p>
+      <div class="input-group">
+        <label for="googleLinkPassword">Password</label>
+        <input type="password" id="googleLinkPassword" placeholder="Enter your password">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" data-close="googlePasswordModal">Cancel</button>
+        <button class="btn btn-primary" id="confirmGoogleLinkBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Set Password First Modal -->
+  <div class="modal-overlay" id="googleSetPasswordFirstModal">
+    <div class="modal" style="max-width: 420px;">
+      <div class="modal-header">
+        <h2>Set a Password First</h2>
+        <button class="modal-close" data-close="googleSetPasswordFirstModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <p id="googleSetPasswordFirstText" style="color: var(--text-secondary); font-size: var(--font-sm); margin-bottom: 16px;">Set a password for your account so you always have a secure way to sign in.</p>
+      <div class="input-group">
+        <label for="googleNewPassword">New Password</label>
+        <input type="password" id="googleNewPassword" placeholder="At least 6 characters">
+      </div>
+      <div class="input-group">
+        <label for="googleNewPasswordConfirm">Confirm Password</label>
+        <input type="password" id="googleNewPasswordConfirm" placeholder="Re-enter password">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" data-close="googleSetPasswordFirstModal">Cancel</button>
+        <button class="btn btn-primary" id="confirmGoogleSetPasswordBtn">Set Password</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Change Username Modal -->
+  <div class="modal-overlay" id="usernameModal">
+    <div class="modal" style="max-width: 400px;">
+      <div class="modal-header">
+        <h2>Change Username</h2>
+        <button class="modal-close" data-close="usernameModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="input-group">
+        <label for="newUsername">New Username</label>
+        <input type="text" id="newUsername" placeholder="Enter new username">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" data-close="usernameModal">Cancel</button>
+        <button class="btn btn-primary" id="saveUsernameBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Change / Set Password Modal -->
+  <div class="modal-overlay" id="passwordModal">
+    <div class="modal" style="max-width: 420px;">
+      <div class="modal-header">
+        <h2 id="passwordModalTitle">Change Password</h2>
+        <button class="modal-close" data-close="passwordModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <p id="passwordModalDesc" style="color: var(--text-secondary); font-size: var(--font-sm); margin-bottom: 16px; display: none;"></p>
+      <div class="input-group" id="currentPasswordGroup">
+        <label for="currentPassword">Current Password</label>
+        <input type="password" id="currentPassword" placeholder="Enter current password">
+      </div>
+      <div class="input-group">
+        <label for="newPassword" id="newPasswordLabel">New Password</label>
+        <input type="password" id="newPassword" placeholder="Enter new password (min. 6 characters)">
+      </div>
+      <div class="input-group">
+        <label for="confirmNewPassword" id="confirmNewPasswordLabel">Confirm Password</label>
+        <input type="password" id="confirmNewPassword" placeholder="Re-enter password">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" data-close="passwordModal">Cancel</button>
+        <button class="btn btn-primary" id="savePasswordBtn">Save Password</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. Two-Factor Authentication Modal -->
+  <div class="modal-overlay" id="twoFactorModal">
+    <div class="modal" style="max-width: 420px;">
+      <div class="modal-header">
+        <h2 id="twoFactorModalTitle">Enable Two-Factor Authentication</h2>
+        <button class="modal-close" data-close="twoFactorModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <p id="twoFactorModalDesc" style="color: var(--text-secondary); font-size: var(--font-sm); margin-bottom: 16px;">
+        Enter your password to verify this security change.
+      </p>
+      <div class="input-group">
+        <label for="twoFactorPassword">Password</label>
+        <input type="password" id="twoFactorPassword" placeholder="Enter your password">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" data-close="twoFactorModal">Cancel</button>
+        <button class="btn btn-primary" id="confirmTwoFactorBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. Delete Account Modal -->
+  <div class="modal-overlay" id="deleteAccountModal">
+    <div class="modal" style="max-width: 420px;">
+      <div class="modal-header">
+        <h2>Delete Account</h2>
+        <button class="modal-close" data-close="deleteAccountModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <p style="color: var(--danger); font-size: var(--font-sm); margin-bottom: 16px;">
+        This action is permanent and cannot be undone. Your profile will be marked as Account Unavailable and your credentials will be completely erased.
+      </p>
+      <div id="deletePasswordGroup" class="input-group">
+        <label for="deletePassword">Confirm Password</label>
+        <input type="password" id="deletePassword" placeholder="Enter your password">
+      </div>
+      <div id="deleteGoogleNotice" style="display: none; margin-bottom: 16px; font-size: var(--font-sm); color: var(--text-secondary);">
+        Confirm deletion by verifying your linked Google account.
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" data-close="deleteAccountModal">Cancel</button>
+        <button class="btn btn-danger" id="confirmDeleteBtn">Permanently Delete</button>
+        <button class="btn btn-danger" id="confirmDeleteGoogleBtn" style="display: none;">Delete with Google</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 9. Generic Confirmation Modal -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal" style="max-width: 380px;">
+      <div class="modal-header">
+        <h2 id="confirmTitle">Confirm Action</h2>
+        <button class="modal-close" data-close="confirmModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <p id="confirmMessage" style="color: var(--text-secondary); font-size: var(--font-sm); margin-bottom: 24px;">Are you sure?</p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" data-close="confirmModal">Cancel</button>
+        <button class="btn btn-danger" id="confirmActionBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Report Problem & Safety Review Modal -->
+  <div class="modal-overlay" id="reportModal" style="z-index: 100010;">
+    <div class="modal" style="max-width: 440px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(239, 68, 68, 0.12); color: var(--danger, #ef4444); display: flex; align-items: center; justify-content: center;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+              <line x1="4" y1="22" x2="4" y2="15"/>
+            </svg>
+          </div>
+          <h2 id="reportModalTitle">Report an Issue</h2>
+        </div>
+        <button class="modal-close" data-close="reportModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <form id="reportForm">
+        <input type="hidden" id="reportTargetUserId" value="">
+        <input type="hidden" id="reportTargetChatId" value="">
+        <input type="hidden" id="reportTargetMessageId" value="">
+
+        <div id="reportTargetSummary" style="display: none; padding: 10px 12px; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 14px; font-size: var(--font-sm); border-left: 3px solid var(--danger);">
+          <div style="font-weight: 600;" id="reportTargetLabel">Target</div>
+          <div style="color: var(--text-muted); font-size: var(--font-xs); margin-top: 2px;" id="reportTargetSub">Details</div>
+        </div>
+
+        <div class="input-group" style="margin-bottom: 14px;">
+          <label for="reportReasonSelect" style="font-weight: 600; font-size: var(--font-sm);">Reason for report</label>
+          <select id="reportReasonSelect" class="form-select" required style="width: 100%; padding: 10px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); color: var(--text-primary); outline: none;">
+            <option value="Harassment / Bullying / Hate Speech">🚨 Harassment / Bullying / Hate Speech</option>
+            <option value="Inappropriate / NSFW / Explicit Content">🔞 Inappropriate / NSFW / Explicit Content</option>
+            <option value="Spam / Scams / Phishing Links">🛑 Spam / Scams / Phishing Links</option>
+            <option value="Impersonation / Fake Account">🎭 Impersonation / Fake Account</option>
+            <option value="Technical Bug / App Problem">💥 Technical Bug / App Problem</option>
+            <option value="Other Terms of Service Violation">⚖️ Other Terms of Service Violation</option>
+          </select>
+        </div>
+
+        <div class="input-group" style="margin-bottom: 18px;">
+          <label for="reportDetailsInput" style="font-weight: 600; font-size: var(--font-sm);">Additional Details (Optional)</label>
+          <textarea id="reportDetailsInput" rows="3" class="form-input" placeholder="Provide extra context to help our moderation team investigate..." style="width: 100%; resize: vertical; padding: 10px 12px; font-size: var(--font-sm);"></textarea>
+        </div>
+
+        <div class="modal-actions" style="margin-top: 0; display: flex; gap: 10px;">
+          <button type="button" class="btn btn-secondary" data-close="reportModal" style="flex: 1;">Cancel</button>
+          <button type="submit" class="btn btn-danger" id="btnSubmitReportForm" style="flex: 1.4;">Submit Report</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- 10. Image Preview Modal -->
+  <div class="image-preview-modal" id="imagePreviewModal">
+    <button class="image-preview-close" id="closeImagePreview">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+    <img id="previewImage" src="" alt="Preview">
+  </div>
+
+  <!-- 11. Session Revoked / Logged Out Modal -->
+  <div class="modal-overlay" id="sessionRevokedModal" style="z-index: 100000;">
+    <div class="modal" style="max-width: 420px; text-align: center;">
+      <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(239, 68, 68, 0.12); color: var(--danger, #ef4444); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 28px; height: 28px;">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </div>
+      <h2 style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">You have been logged out</h2>
+      <p style="color: var(--text-secondary); font-size: var(--font-sm); line-height: 1.5; margin-bottom: 24px;">
+        Your session was terminated from another device or has expired. Please sign back in to continue using SYNCH.
+      </p>
+      <div class="modal-actions" style="margin-top: 0; display: flex; gap: 10px;">
+        <button class="btn btn-secondary" id="closeSessionRevokedBtn" style="flex: 1;">Close</button>
+        <button class="btn btn-primary" id="reloginSessionRevokedBtn" style="flex: 1.4;">Sign In Again</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 12. Confirm Password Before Entering 2FA Settings Modal -->
+  <div class="modal-overlay" id="confirmPasswordFor2FAModal">
+    <div class="modal" style="max-width: 420px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(0, 132, 255, 0.12); color: var(--accent); display: flex; align-items: center; justify-content: center;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </div>
+          <h2>Confirm Password</h2>
+        </div>
+        <button class="modal-close" data-close="confirmPasswordFor2FAModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <p style="color: var(--text-secondary); font-size: var(--font-sm); margin-bottom: 16px; line-height: 1.4;">
+        For your security, please enter your current password to manage Two-Factor Authentication.
+      </p>
+      <form id="confirmPasswordFor2FAForm">
+        <div class="input-group">
+          <label for="confirm2FAPasswordInput">Password</label>
+          <input type="password" id="confirm2FAPasswordInput" placeholder="Enter your password" required autocomplete="current-password">
+          <span class="field-error" id="confirm2FAPasswordError" style="display: none; color: var(--danger); font-size: var(--font-xs); margin-top: 4px;"></span>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" data-close="confirmPasswordFor2FAModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="submitConfirm2FAPasswordBtn">Continue</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 13. Device Sign-In Request Approval Modal with Map -->
+  <div class="modal-overlay" id="deviceApprovalModal" style="z-index: 100001;">
+    <div class="modal" style="max-width: 440px; padding: 0 !important; overflow: hidden; border-radius: 16px;">
+      <!-- Map Header -->
+      <div style="position: relative; width: 100%; height: 160px; background: var(--bg-tertiary, #1a2234); overflow: hidden;">
+        <iframe id="devicePromptMapFrame" style="width: 100%; height: 100%; border: none; filter: brightness(0.85) contrast(1.1);" src="" loading="lazy"></iframe>
+        <div id="devicePromptLocationPill" style="position: absolute; bottom: 10px; left: 12px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.15); padding: 4px 10px; border-radius: 20px; font-size: 12px; color: #fff; display: flex; align-items: center; gap: 6px; font-weight: 500;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; color: var(--accent);"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span id="devicePromptLocationText">Approximate Location</span>
+        </div>
+      </div>
+
+      <div style="padding: 20px 22px;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+          <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(0, 132, 255, 0.12); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h2 style="font-size: 18px; font-weight: 700; margin: 0; color: var(--text-primary);">Sign-In Request</h2>
+        </div>
+        <p style="color: var(--text-secondary); font-size: var(--font-sm); margin-bottom: 16px; line-height: 1.4;">
+          A device is trying to sign into your SYNCH account. Is this you?
+        </p>
+
+        <!-- Details Card -->
+        <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px; font-size: var(--font-sm);">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--text-secondary);">Device:</span>
+            <strong id="devicePromptDeviceName" style="color: var(--text-primary);">Chrome on Windows</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--text-secondary);">IP Address:</span>
+            <span id="devicePromptIP" style="color: var(--text-primary); font-family: monospace;">192.168.1.142</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--text-secondary);">Time:</span>
+            <span id="devicePromptTime" style="color: var(--text-primary);">Just now</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--text-secondary);">Expires:</span>
+            <span id="devicePromptExpiryText" style="color: var(--warning, #f59e0b); font-weight: 600;">5:00</span>
+          </div>
+        </div>
+
+        <div id="devicePromptExpiredBanner" style="display: none; padding: 12px; background: rgba(239, 68, 68, 0.12); color: var(--danger); border-radius: 10px; margin-bottom: 16px; font-size: var(--font-sm); text-align: center; font-weight: 600;">
+          This sign-in request has expired.
+        </div>
+
+        <div class="modal-actions" id="devicePromptActions" style="margin-top: 0; display: flex; gap: 10px;">
+          <button class="btn btn-danger" id="declineDevicePromptBtn" style="flex: 1;">No, Decline</button>
+          <button class="btn btn-primary" id="approveDevicePromptBtn" style="flex: 1.2;">Yes, Approve</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Device Prompt Result Modal -->
+  <div class="modal-overlay" id="devicePromptResultModal" style="z-index: 100002;">
+    <div class="modal modal-sm" style="text-align: center; padding: 28px 22px;">
+      <div id="devicePromptResultIcon" style="width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+      </div>
+      <h3 id="devicePromptResultTitle" style="font-size: 18px; margin-bottom: 8px; color: var(--text-primary);">Sign-in Approved</h3>
+      <p id="devicePromptResultDesc" style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 22px;">
+      </p>
+      <div class="modal-actions" style="margin-top: 0; justify-content: center;">
+        <button class="btn btn-primary" id="devicePromptResultCloseBtn" style="width: 100%;">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden Audio Element for Remote Voice Stream -->
+  <audio id="remoteAudioStream" autoplay playsinline style="display: none;"></audio>
+
+  <!-- Session Revoked / Expired Modal -->
+  <div class="modal-overlay" id="sessionRevokedModal" style="z-index: 100005;">
+    <div class="modal modal-sm" style="text-align: center; padding: 28px 24px;">
+      <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); color: #ef4444; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+      <h3 style="font-size: 18px; margin-bottom: 8px; color: var(--text-primary);">Session Ended</h3>
+      <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 20px;">
+        Your login session has expired or was signed out from another device. Please log in again to continue.
+      </p>
+      <div style="display: flex; gap: 10px; justify-content: center;">
+        <button class="btn btn-primary btn-block" id="reloginSessionRevokedBtn" style="padding: 12px; font-weight: 600;">Log In Again</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Incoming Call Modal -->
+  <!-- Incoming Call Modal -->
+  <div class="modal-overlay" id="incomingCallModal" style="z-index: 100003;">
+    <div class="modal modal-sm incoming-call-card">
+      <div class="incoming-call-avatar-wrapper">
+        <div class="incoming-call-radar-ring"></div>
+        <div class="incoming-call-radar-ring delay"></div>
+        <div class="avatar avatar-xl" id="incomingCallAvatar">U</div>
+      </div>
+      <h3 id="incomingCallName" class="incoming-call-name">Username</h3>
+      <p class="incoming-call-subtitle" id="incomingCallType">Incoming Call...</p>
+      
+      <div class="incoming-call-actions">
+        <button class="call-action-btn btn-call-decline" id="declineIncomingCallBtn" title="Decline">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/>
+            <line x1="23" y1="1" x2="1" y2="23"/>
+          </svg>
+          <span>Decline</span>
+        </button>
+        <button class="call-action-btn btn-call-accept" id="acceptIncomingCallBtn" title="Accept">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+          </svg>
+          <span>Accept</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full-Screen Audio & Video Call Overlay -->
+  <div class="audio-call-overlay" id="audioCallOverlay">
+    <div class="call-overlay-header">
+      <div class="call-encryption-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <span id="callSecurityBadgeText">End-to-End Encrypted</span>
+      </div>
+      <button class="btn-icon call-minimize-btn" id="callMinimizeBtn" title="Minimize Call">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="4 14 10 14 10 20"/>
+          <polyline points="20 10 14 10 14 4"/>
+          <line x1="14" y1="10" x2="21" y2="3"/>
+          <line x1="3" y1="21" x2="10" y2="14"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Video Streams Container -->
+    <div class="call-video-container" id="callVideoContainer" style="display: none;">
+      <video id="remoteVideoStream" autoplay playsinline class="remote-video-feed"></video>
+      <div class="local-video-pip" id="localVideoPip">
+        <video id="localVideoStream" autoplay playsinline muted class="local-video-feed"></video>
+      </div>
+    </div>
+
+    <!-- Audio Avatar Container -->
+    <div class="call-overlay-center" id="callAudioCenter">
+      <div class="call-avatar-wrapper">
+        <div class="call-radar-halo"></div>
+        <div class="call-radar-halo delay"></div>
+        <div class="avatar avatar-xxl call-hero-avatar" id="callAvatar">U</div>
+      </div>
+      <h2 class="call-user-name" id="callUserName">Username</h2>
+      <div class="call-status-pill" id="callStatusPill">
+        <span class="call-status-dot"></span>
+        <span id="callStatusText">Calling...</span>
+      </div>
+      <div class="call-duration-timer" id="callDurationTimer">00:00</div>
+
+      <!-- Animated Audio Wave Indicator -->
+      <div class="audio-wave-visualizer" id="audioWaveVisualizer">
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+      </div>
+    </div>
+
+    <div class="call-overlay-dock">
+      <button class="call-dock-btn" id="callMuteBtn" title="Mute Microphone">
+        <div class="call-dock-icon" id="callMuteIcon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </div>
+        <span id="callMuteText">Mute</span>
+      </button>
+
+      <button class="call-dock-btn" id="callVideoBtn" title="Toggle Camera">
+        <div class="call-dock-icon" id="callVideoIcon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="23 7 16 12 23 17 23 7"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
+        </div>
+        <span id="callVideoText">Camera</span>
+      </button>
+
+      <button class="call-dock-btn" id="callScreenShareBtn" title="Share Screen">
+        <div class="call-dock-icon" id="callScreenShareIcon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+        </div>
+        <span id="callScreenShareText">Share</span>
+      </button>
+
+      <button class="call-dock-btn call-end-dock-btn" id="callEndBtn" title="End Call">
+        <div class="call-dock-icon end-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/>
+            <line x1="23" y1="1" x2="1" y2="23"/>
+          </svg>
+        </div>
+        <span>End</span>
+      </button>
+
+      <button class="call-dock-btn" id="callSpeakerBtn" title="Speaker">
+        <div class="call-dock-icon" id="callSpeakerIcon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          </svg>
+        </div>
+        <span>Speaker</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Minimized Floating Call Badge -->
+  <div class="minimized-call-badge" id="minimizedCallBadge" style="display: none;">
+    <div class="minimized-call-pulse"></div>
+    <div class="minimized-call-info">
+      <strong id="minimizedCallName">Username</strong>
+      <span id="minimizedCallTimer">00:00</span>
+    </div>
+    <div class="minimized-call-tap">Tap to expand</div>
+  </div>
+
+  <!-- Create Group Chat Modal -->
+  <div class="modal-overlay" id="createGroupModal" style="z-index: 100004;">
+    <div class="modal modal-md">
+      <div class="modal-header">
+        <h2>Create Group Chat</h2>
+        <button class="modal-close" data-close="createGroupModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <form id="createGroupForm">
+        <div class="input-group">
+          <label for="groupNameInput">Group Name</label>
+          <input type="text" id="groupNameInput" placeholder="Enter group name (e.g. Project Team)" required maxlength="60">
+        </div>
+        <div class="input-group">
+          <label>Select Friends</label>
+          <div id="groupFriendsList" class="group-friends-checklist" style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 8px;">
+            <div class="loading"><div class="loading-spinner"></div></div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" data-close="createGroupModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="confirmCreateGroupBtn">Create Group</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Group Details & Members Modal -->
+  <div class="modal-overlay" id="groupInfoModal" style="z-index: 100004;">
+    <div class="modal modal-md">
+      <div class="modal-header">
+        <h2 id="groupInfoTitle">Group Info</h2>
+        <button class="modal-close" data-close="groupInfoModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="group-info-body">
+        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 20px;">
+          <div class="avatar avatar-lg" id="groupInfoAvatar">G</div>
+          <div>
+            <h3 id="groupInfoName" style="margin: 0 0 4px 0; font-size: 18px;">Group Name</h3>
+            <p id="groupInfoMemberCount" style="margin: 0; font-size: 13px; color: var(--text-secondary);">3 members</p>
+          </div>
+        </div>
+
+        <h4 style="font-size: 14px; margin-bottom: 10px; color: var(--text-secondary);">Members</h4>
+        <div id="groupMembersList" style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+          <button class="btn btn-danger btn-block btn-sm" id="leaveGroupBtn">Leave Group</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/ui.js?v=56"></script>
+  <script src="js/auth.js?v=56"></script>
+  <script src="js/socket.js?v=56"></script>
+  <script src="js/custom-dropdown.js?v=56"></script>
+  <script src="js/google-identity.js?v=56"></script>
+  <script src="js/webrtc-call.js?v=56"></script>
+  <script src="js/chat.js?v=56"></script>
+
+
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+  </script>
+</body>
+</html>

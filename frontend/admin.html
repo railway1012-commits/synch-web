@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="stylesheet" href="css/main.css?v=58">
+  <link rel="stylesheet" href="css/admin.css?v=58">
+
+</head>
+<body class="admin-body">
+  <!-- Top Navigation Bar -->
+  <header class="admin-header">
+    <div class="admin-header-left">
+      <div class="admin-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="admin-logo-icon">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+        <span>SYNCH ADMIN</span>
+      </div>
+      <span class="admin-badge">SUPER ADMIN</span>
+    </div>
+    <div class="admin-header-right">
+      <button class="btn btn-secondary btn-sm" id="btnOpenBroadcastModal">📢 Broadcast</button>
+      <span class="admin-user-tag">noreply.synch@gmail.com</span>
+      <button class="btn btn-danger btn-sm" id="adminLogoutBtn">Sign Out</button>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs Bar -->
+  <nav class="admin-nav-bar">
+    <button class="admin-nav-item active" data-view="users">👥 Users & Forensics</button>
+    <button class="admin-nav-item" data-view="reports">🚨 Reports Queue <span class="admin-tab-badge" id="navBadgeReports" style="display:none;">0</span></button>
+    <button class="admin-nav-item" data-view="media">🖼️ Media Vault</button>
+    <button class="admin-nav-item" data-view="ip">🛡️ Security & IPs</button>
+    <button class="admin-nav-item" data-view="words">🛑 Auto-Mod Rules</button>
+    <button class="admin-nav-item" data-view="badges">🏅 Custom Badges</button>
+    <button class="admin-nav-item" data-view="webhooks">🔔 Staff Webhooks</button>
+    <button class="admin-nav-item" data-view="health">⚡ System & DevOps</button>
+
+    <button class="admin-nav-item" data-view="flags">⚙️ Feature Flags</button>
+    <button class="admin-nav-item" data-view="sql">💾 SQL Studio</button>
+    <button class="admin-nav-item" data-view="audit">📜 Audit Logs</button>
+  </nav>
+
+  <!-- Metrics Bar -->
+  <div class="admin-metrics-bar" id="metricsBar">
+    <div class="metric-card">
+      <div class="metric-val" id="metricTotalUsers">-</div>
+      <div class="metric-lbl">Total Users</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-val text-success" id="metricOnlineUsers">-</div>
+      <div class="metric-lbl">Online Now</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-val text-purple" id="metricTwoFactorUsers">-</div>
+      <div class="metric-lbl">2FA Protected</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-val text-blue" id="metricSessions">-</div>
+      <div class="metric-lbl">Active Sessions</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-val" id="metricChats">-</div>
+      <div class="metric-lbl">Total Chats</div>
+    </div>
+  </div>
+
+  <!-- VIEW 1: Users Management & Control Drawer -->
+  <div class="admin-view active" id="view-users">
+    <div class="admin-container">
+      <!-- User List Panel -->
+      <section class="admin-users-panel">
+        <div class="panel-header">
+          <h2>Users Directory & Forensics</h2>
+          <div class="search-box admin-search">
+            <svg class="search-box-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="adminSearchInput" placeholder="Search ID, username, email...">
+          </div>
+        </div>
+
+        <div class="admin-users-table-container">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>User</th>
+                <th>Email</th>
+                <th>Status</th>
+                <th>2FA</th>
+                <th>Badges / Flags</th>
+                <th>Sessions</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyUsers">
+              <tr><td colspan="8" class="text-center p-4">Loading users directory...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- User Detail Drawer -->
+      <aside class="admin-user-drawer" id="userDrawer" style="display: none;">
+        <div class="drawer-header">
+          <div class="drawer-user-info">
+            <div class="avatar avatar-lg" id="drawerAvatar">U</div>
+            <div>
+              <h3 id="drawerUsername">Username</h3>
+              <p id="drawerEmail">user@example.com</p>
+              <div class="d-flex gap-1 mt-1" id="drawerBadgesRow"></div>
+            </div>
+          </div>
+          <button class="btn-icon" id="btnCloseDrawer" title="Close Panel">✕</button>
+        </div>
+
+        <!-- Drawer Content Tabs -->
+        <div class="drawer-tabs-wrapper">
+          <div class="drawer-nav-tabs">
+            <button class="drawer-tab-btn active" data-tab="account">Account</button>
+            <button class="drawer-tab-btn" data-tab="moderation">Moderation</button>
+            <button class="drawer-tab-btn" data-tab="alts">Alt Accounts</button>
+            <button class="drawer-tab-btn" data-tab="warnings">Warnings</button>
+            <button class="drawer-tab-btn" data-tab="friends">Friends</button>
+            <button class="drawer-tab-btn" data-tab="sessions">Sessions</button>
+            <button class="drawer-tab-btn" data-tab="chats">Chat Spy</button>
+            <button class="drawer-tab-btn" data-tab="purge">Purge</button>
+          </div>
+
+          <div class="drawer-body">
+            <!-- TAB 1: Account Controls -->
+            <div class="drawer-tab-pane active" id="pane-account">
+              <div class="control-group">
+                <label>Email Address</label>
+                <input type="text" id="ctrlEmail" class="form-input">
+              </div>
+              <div class="control-group">
+                <label>Username</label>
+                <input type="text" id="ctrlUsername" class="form-input">
+              </div>
+              <div class="control-group">
+                <label>Display Name</label>
+                <input type="text" id="ctrlDisplayName" class="form-input">
+              </div>
+              <div class="control-group">
+                <label>Status</label>
+                <select id="ctrlStatus" class="form-select">
+                  <option value="offline">Offline</option>
+                  <option value="online">Online</option>
+                  <option value="away">Away</option>
+                </select>
+              </div>
+              <button class="btn btn-primary btn-block mb-3" id="btnSaveAccount">Save Profile Changes</button>
+
+              <hr class="admin-divider">
+
+              <div class="control-group">
+                <label>User Role</label>
+                <select id="ctrlRole" class="form-select">
+                  <option value="user">Standard User</option>
+                  <option value="moderator">Community Moderator</option>
+                  <option value="admin">System Administrator</option>
+                  <option value="superadmin">Super Admin</option>
+                </select>
+              </div>
+              <button class="btn btn-secondary btn-block mb-3" id="btnSaveRole">Update User Role</button>
+
+              <div class="control-group">
+                <label>Assigned Badge</label>
+                <select id="ctrlBadgeSelect" class="form-select">
+                  <option value="">None (Standard)</option>
+                  <option value="VERIFIED">Blue Verified Tick</option>
+                  <option value="STAFF">Staff / Team</option>
+                  <option value="VIP">VIP Gold</option>
+                  <option value="FOUNDER">Founder</option>
+                </select>
+              </div>
+              <button class="btn btn-secondary btn-block mb-3" id="btnSaveBadge">Apply Badge</button>
+
+              <div class="control-group">
+                <label>Staff Dossier & Investigation Notes</label>
+                <textarea id="ctrlAdminNotes" class="form-input" rows="4" placeholder="Confidential moderator notes regarding this user..."></textarea>
+              </div>
+              <button class="btn btn-secondary btn-block" id="btnSaveNotes">Save Dossier Notes</button>
+            </div>
+
+            <!-- TAB 2: Moderation & Enforcement -->
+            <div class="drawer-tab-pane" id="pane-moderation">
+              <div class="card p-3 mb-3" id="banStatusBanner" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); display: none;">
+                <div class="d-flex justify-between align-center mb-1">
+                  <strong style="color: var(--danger);">🚨 ACCOUNT IS CURRENTLY BANNED</strong>
+                </div>
+                <p id="banReasonText" style="font-size: 12.5px; margin-bottom: 4px;">Violation of terms</p>
+                <p id="banExpiryText" style="font-size: 11px; color: var(--text-muted);"></p>
+              </div>
+
+              <div class="d-flex gap-2 mb-3">
+                <button class="btn btn-danger btn-block" id="btnOpenBanDialog">🚨 Ban / Suspend User</button>
+                <button class="btn btn-success btn-block" id="btnUnbanUserBtn" style="display: none;">🟢 Lift Ban / Unban</button>
+              </div>
+
+              <div class="control-toggle-row">
+                <div>
+                  <strong>Two-Factor Authentication (2FA)</strong>
+                  <p>Require 2FA verification for this account</p>
+                </div>
+                <label class="switch-control">
+                  <input type="checkbox" id="ctrlTwoFactor">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+
+              <div class="control-toggle-row">
+                <div>
+                  <strong>Account Freeze / Lockdown</strong>
+                  <p>Prevents messages, profile updates, and logins</p>
+                </div>
+                <label class="switch-control">
+                  <input type="checkbox" id="ctrlFreeze">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+
+              <div class="control-toggle-row">
+                <div>
+                  <strong>Shadowban</strong>
+                  <p>User can chat, but messages are silently hidden from others</p>
+                </div>
+                <label class="switch-control">
+                  <input type="checkbox" id="ctrlShadowban">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+
+              <div class="control-toggle-row" id="ctrlGoogleRow" style="display: none;">
+                <div>
+                  <strong>Google Connected</strong>
+                  <p id="ctrlGoogleStatus">Connected</p>
+                </div>
+                <button class="btn btn-secondary btn-sm" id="btnDisconnectGoogle">Unlink Google</button>
+              </div>
+
+              <hr class="admin-divider">
+
+              <div class="control-group">
+                <label>Force Change User Password</label>
+                <div class="input-with-action">
+                  <input type="password" id="ctrlNewPassword" class="form-input" placeholder="Enter new password">
+                  <button class="btn btn-secondary btn-sm" id="btnResetPassword">Set</button>
+                </div>
+              </div>
+
+              <div class="d-flex gap-2 mb-3">
+                <button class="btn btn-secondary btn-block" id="btnResetAvatar">🖼️ Reset Avatar</button>
+                <button class="btn btn-danger btn-block" id="btnDeleteUser">🗑️ Delete User</button>
+              </div>
+            </div>
+
+            <!-- TAB 3: Alt Accounts & IP Forensics -->
+
+            <div class="drawer-tab-pane" id="pane-alts">
+              <div class="d-flex justify-between align-center mb-3">
+                <h4>Linked Alt Accounts</h4>
+                <button class="btn btn-danger btn-sm" id="btnPoisonBan">🚨 Cascade Poison Ban</button>
+              </div>
+              <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                Accounts correlated via shared IP addresses or device canvas fingerprints.
+              </p>
+              <div id="drawerAltsList" class="items-list mb-3"></div>
+
+              <h4 class="mb-2">Recent IP History</h4>
+              <div id="drawerIpHistoryList" class="items-list"></div>
+            </div>
+
+            <!-- TAB 4: Warnings & Infractions -->
+            <div class="drawer-tab-pane" id="pane-warnings">
+              <div class="card p-3 mb-3" style="background: rgba(255,255,255,0.03);">
+                <h5 class="mb-2">Issue New Warning</h5>
+                <div class="control-group mb-2">
+                  <input type="text" id="inputWarnReason" class="form-input" placeholder="Reason (e.g. Inappropriate language in group)">
+                </div>
+                <div class="d-flex gap-2">
+                  <select id="selectWarnSeverity" class="form-select">
+                    <option value="warning">Minor Warning</option>
+                    <option value="moderate">Moderate Infraction</option>
+                    <option value="severe">Critical Strike</option>
+                  </select>
+                  <button class="btn btn-warning" id="btnSubmitWarning">Issue Strike</button>
+                </div>
+              </div>
+
+              <h4>Prior Warnings History</h4>
+              <div id="drawerWarningsList" class="items-list"></div>
+            </div>
+
+            <!-- TAB 5: Friends & Requests -->
+            <div class="drawer-tab-pane" id="pane-friends">
+              <div class="control-group">
+                <label>Force Add Friend</label>
+                <div class="input-with-action">
+                  <input type="number" id="ctrlTargetFriendId" class="form-input" placeholder="Target User ID">
+                  <button class="btn btn-primary btn-sm" id="btnAddFriend">Add Friend</button>
+                </div>
+              </div>
+
+              <h4>Friends List</h4>
+              <div id="drawerFriendsList" class="items-list mb-3"></div>
+
+              <h4>Pending Incoming Requests</h4>
+              <div id="drawerIncomingList" class="items-list mb-3"></div>
+
+              <h4>Pending Outgoing Requests</h4>
+              <div id="drawerOutgoingList" class="items-list"></div>
+            </div>
+
+            <!-- TAB 6: Active Sessions -->
+            <div class="drawer-tab-pane" id="pane-sessions">
+              <div class="d-flex justify-between align-center mb-3">
+                <h4>Active Sessions</h4>
+                <button class="btn btn-danger btn-sm" id="btnRevokeAllSessions">Kill All Sessions</button>
+              </div>
+              <div id="drawerSessionsList" class="items-list"></div>
+            </div>
+
+            <!-- TAB 7: Chat Spy & Impersonation -->
+            <div class="drawer-tab-pane" id="pane-chats">
+              <div id="spyChatsListView">
+                <div class="d-flex justify-between align-center mb-2">
+                  <h4>User's Conversations</h4>
+                </div>
+                <div id="drawerChatsList" class="items-list"></div>
+              </div>
+
+              <div id="spyMessagesView" style="display: none;">
+                <div class="d-flex justify-between align-center mb-2">
+                  <button class="btn btn-secondary btn-sm" id="btnBackToChatsList">&larr; Back to chats</button>
+                  <button class="btn btn-secondary btn-sm" id="btnExportChat">Forensic Export</button>
+                </div>
+                <div class="spy-chat-header" id="spyChatHeader"></div>
+                <div class="spy-messages-box" id="spyMessagesBox"></div>
+                <div class="spy-send-box">
+                  <input type="text" id="spyMessageInput" class="form-input" placeholder="Type a message as this user...">
+                  <button class="btn btn-primary" id="btnSpySend">Send</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB 8: Bulk Message Purge -->
+            <div class="drawer-tab-pane" id="pane-purge">
+              <div class="danger-box mb-3">
+                <h4>Bulk Message Purge</h4>
+                <p>Delete all messages sent by this user across all private and group chats.</p>
+                <div class="control-group mt-2">
+                  <label>Purge Scope</label>
+                  <select id="selectPurgeHours" class="form-select">
+                    <option value="24">Past 24 Hours</option>
+                    <option value="72">Past 3 Days</option>
+                    <option value="168">Past 7 Days</option>
+                    <option value="-1">All Messages (Complete Wipe)</option>
+                  </select>
+                </div>
+                <button class="btn btn-danger btn-block mt-3" id="btnConfirmBulkPurge">Purge Messages</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- VIEW: Reports Queue (NEW) -->
+  <div class="admin-view" id="view-reports" style="display: none;">
+    <div class="admin-subview-container">
+      <div class="d-flex justify-between align-center mb-4">
+        <div>
+          <h2>🚨 Safety & Reports Review Queue</h2>
+          <p style="color: var(--text-secondary); font-size: 13px;">Review reported messages, user violations, and safety complaints.</p>
+        </div>
+        <div class="d-flex gap-2">
+          <select id="selectReportStatusFilter" class="form-select" style="max-width: 160px;">
+            <option value="pending">Pending Review</option>
+            <option value="resolved">Resolved</option>
+            <option value="dismissed">Dismissed</option>
+            <option value="all">All Reports</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" id="btnRefreshReports">Refresh Queue</button>
+        </div>
+      </div>
+
+      <div id="reportsContainer" class="reports-stream-grid">
+        <div class="text-center p-4 w-100">Loading reports queue...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW: Custom Badges (NEW) -->
+  <div class="admin-view" id="view-badges" style="display: none;">
+    <div class="admin-subview-container">
+      <div class="d-flex justify-between align-center mb-4">
+        <div>
+          <h2>🏅 Custom Badges & Roles</h2>
+          <p style="color: var(--text-secondary); font-size: 13px;">Create and manage platform-wide badge pills and titles.</p>
+        </div>
+      </div>
+
+      <div class="card p-4 mb-4">
+        <h4 class="mb-3">Create Custom Badge</h4>
+        <div class="d-flex gap-2 flex-wrap mb-2">
+          <input type="text" id="inputBadgeName" class="form-input" placeholder="Badge Name (e.g. VIP Gold)" style="max-width: 220px;">
+          <input type="text" id="inputBadgeSlug" class="form-input" placeholder="Slug (e.g. VIP_GOLD)" style="max-width: 180px;">
+          <input type="text" id="inputBadgeIcon" class="form-input" placeholder="Icon Emoji (e.g. 🌟)" style="max-width: 140px;">
+          <input type="color" id="inputBadgeColor" value="#0084ff" title="Text / Border Color" style="height: 38px; width: 44px; padding: 2px; cursor: pointer; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.2); background: transparent;">
+          <button class="btn btn-primary" id="btnCreateBadge">Create Badge</button>
+        </div>
+      </div>
+
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Preview</th>
+            <th>Name</th>
+            <th>Slug</th>
+            <th>Icon</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyBadgesList">
+          <tr><td colspan="6" class="text-center p-4">Loading custom badges...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- VIEW: Discord / Slack Webhooks (NEW) -->
+  <div class="admin-view" id="view-webhooks" style="display: none;">
+    <div class="admin-subview-container">
+      <div class="d-flex justify-between align-center mb-4">
+        <div>
+          <h2>🔔 Staff Webhook Alerts</h2>
+          <p style="color: var(--text-secondary); font-size: 13px;">Stream high-priority security, ban, warning, and emergency alerts to your private staff webhook channels.</p>
+        </div>
+        <button class="btn btn-warning btn-sm" id="btnTestWebhook">🚀 Dispatch Test Alert</button>
+      </div>
+
+
+      <div class="card p-4 mb-4">
+        <h4 class="mb-3">Add Webhook Integration</h4>
+        <div class="d-flex gap-2 flex-wrap mb-2">
+          <input type="text" id="inputWebhookName" class="form-input" placeholder="Channel Name (e.g. #staff-logs)" style="max-width: 240px;">
+          <input type="text" id="inputWebhookUrl" class="form-input" placeholder="https://discord.com/api/webhooks/..." style="flex: 1; min-width: 300px;">
+          <button class="btn btn-primary" id="btnAddWebhook">Save Webhook</button>
+        </div>
+      </div>
+
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Webhook URL</th>
+            <th>Events</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyWebhooksList">
+          <tr><td colspan="5" class="text-center p-4">Loading webhook integrations...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- VIEW 2: System Health & Maintenance -->
+  <div class="admin-view" id="view-health" style="display: none;">
+    <div class="admin-subview-container">
+      <div class="d-flex justify-between align-center mb-4">
+        <div>
+          <h2>⚡ System Health & DevOps Diagnostics</h2>
+          <p style="color: var(--text-secondary); font-size: 13px;">Real-time infrastructure performance, memory distribution, and PostgreSQL connection stats.</p>
+        </div>
+        <div class="d-flex align-center gap-2">
+          <button class="btn btn-warning btn-sm" id="btnRunVacuum">🧹 Database Vacuum</button>
+          <button class="btn btn-secondary btn-sm" id="btnCleanOrphaned">🗑️ Clean Orphaned Files</button>
+          <button class="btn btn-secondary btn-sm" id="btnRefreshHealth">Refresh Diagnostics</button>
+        </div>
+      </div>
+
+      <!-- Maintenance Mode Banner -->
+      <div class="card p-4 mb-4" style="border: 1px solid rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.08);">
+        <div class="d-flex justify-between align-center">
+          <div>
+            <h3 style="margin: 0; color: #ffffff;">Platform Maintenance Mode</h3>
+            <p style="margin: 4px 0 0; font-size: 13px; color: var(--text-secondary);">When enabled, all non-admin users will be blocked with a 503 maintenance screen.</p>
+          </div>
+          <label class="switch-control">
+            <input type="checkbox" id="ctrlMaintenanceMode">
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Live Diagnostics Grid -->
+      <div class="health-grid mb-4">
+        <div class="health-card">
+          <div class="health-card-title">Memory Allocation (Heap)</div>
+          <div class="health-card-val" id="healthHeapVal">-- MB</div>
+          <div class="health-card-sub" id="healthHeapSub">Total: -- MB | RSS: -- MB</div>
+        </div>
+        <div class="health-card">
+          <div class="health-card-title">System Memory (RAM)</div>
+          <div class="health-card-val" id="healthRamVal">-- MB</div>
+          <div class="health-card-sub" id="healthRamSub">Free: -- MB</div>
+        </div>
+        <div class="health-card">
+          <div class="health-card-title">Server Uptime</div>
+          <div class="health-card-val" id="healthUptimeVal">--</div>
+          <div class="health-card-sub" id="healthOsUptimeSub">OS Uptime: --</div>
+        </div>
+        <div class="health-card">
+          <div class="health-card-title">PostgreSQL Pool</div>
+          <div class="health-card-val" id="healthPoolVal">-- Total</div>
+          <div class="health-card-sub" id="healthPoolSub">-- Idle | -- Waiting</div>
+        </div>
+        <div class="health-card">
+          <div class="health-card-title">Active Sockets</div>
+          <div class="health-card-val text-success" id="healthSocketsVal">--</div>
+          <div class="health-card-sub">WebSocket Connections</div>
+        </div>
+        <div class="health-card">
+          <div class="health-card-title">Node Environment</div>
+          <div class="health-card-val" id="healthNodeVal">--</div>
+          <div class="health-card-sub" id="healthPlatformSub">--</div>
+        </div>
+      </div>
+
+      <!-- Database Table Sizes -->
+      <div class="card p-4">
+        <h4 class="mb-3">PostgreSQL Table Storage & Live Tuples</h4>
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Table Name</th>
+              <th>Disk Size</th>
+              <th>Live Rows</th>
+              <th>Dead Tuples</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyTableDiagnostics">
+            <tr><td colspan="4" class="text-center p-3">Loading table diagnostics...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW 3: IP Blacklist -->
+  <div class="admin-view" id="view-ip" style="display: none;">
+    <div class="admin-subview-container">
+      <div class="d-flex justify-between align-center mb-4">
+        <div>
+          <h2>🛡️ IP Address Blacklist</h2>
+          <p style="color: var(--text-secondary); font-size: 13px;">Manage blocked IP addresses that are denied access at the network boundary.</p>
+        </div>
+      </div>
+
+      <div class="card p-4 mb-4">
+        <h4 class="mb-3">Add IP to Blacklist</h4>
+        <div class="d-flex gap-2">
+          <input type="text" id="inputBlacklistIp" class="form-input" placeholder="e.g. 192.168.1.100 or 203.0.113.19" style="max-width: 260px;">
+          <input type="text" id="inputBlacklistReason" class="form-input" placeholder="Reason (e.g. DDoS attempt, malicious spam)">
+          <button class="btn btn-danger" id="btnAddIpBlacklist">Block IP</button>
+        </div>
+      </div>
+
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>IP Address</th>
+            <th>Reason</th>
+            <th>Date Added</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyIpBlacklist">
+          <tr><td colspan="5" class="text-center p-4">Loading IP blacklist...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- VIEW 4: Word Blacklist & Auto-Mod -->
+  <div class="admin-view" id="view-words" style="display: none;">
+    <div class="admin-subview-container">
+      <div class="d-flex justify-between align-center mb-4">
+        <div>
+          <h2>🛑 Auto-Moderation & Banned Words</h2>
+          <p style="color: var(--text-secondary); font-size: 13px;">Messages containing forbidden keywords will be automatically blocked by the real-time message engine.</p>
+        </div>
+      </div>
+
+      <div class="card p-4 mb-4">
+        <h4 class="mb-3">Add Restricted Keyword</h4>
+        <div class="d-flex gap-2">
+          <input type="text" id="inputBannedWord" class="form-input" placeholder="Enter keyword or phrase..." style="max-width: 300px;">
+          <select id="selectWordAction" class="form-select" style="max-width: 160px;">
+            <option value="block">Auto-Block Message</option>
+          </select>
+          <button class="btn btn-primary" id="btnAddWordBlacklist">Add Filter Rule</button>
+        </div>
+      </div>
+
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Restricted Keyword</th>
+            <th>Action</th>
+            <th>Added At</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyWordBlacklist">
+          <tr><td colspan="5" class="text-center p-4">Loading banned keywords...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- VIEW 5: Media Gallery -->
+  <div class="admin-view" id="view-media" style="display: none;">
+    <div class="admin-subview-container">
+      <div class="d-flex justify-between align-center mb-4">
+        <div>
+          <h2>🖼️ Global Media & Storage Vault</h2>
+          <p style="color: var(--text-secondary); font-size: 13px;">Inspect all uploaded user avatars, attachments, and media files stored in the server repository.</p>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="btnRefreshMedia">Refresh Files</button>
+      </div>
+
+      <div class="media-grid" id="adminMediaGrid">
+        <div class="text-center p-4 w-100">Loading server media...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW 6: Feature Flags -->
+  <div class="admin-view" id="view-flags" style="display: none;">
+    <div class="admin-subview-container">
+      <div class="d-flex justify-between align-center mb-4">
+        <div>
+          <h2>⚙️ Platform Feature Flags</h2>
+          <p style="color: var(--text-secondary); font-size: 13px;">Globally enable or disable specific features across Web and Android clients in real-time.</p>
+        </div>
+      </div>
+
+      <div class="card p-4" id="flagsContainer">
+        <div class="control-toggle-row">
+          <div>
+            <strong>Allow User Registrations / Signups</strong>
+            <p>Allow new visitors to register accounts</p>
+          </div>
+          <label class="switch-control">
+            <input type="checkbox" id="flag-allow_signups" data-flag="allow_signups">
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+
+        <div class="control-toggle-row">
+          <div>
+            <strong>Voice Notes & Audio Recording</strong>
+            <p>Allow recording and sending audio notes</p>
+          </div>
+          <label class="switch-control">
+            <input type="checkbox" id="flag-allow_voice_notes" data-flag="allow_voice_notes">
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+
+        <div class="control-toggle-row">
+          <div>
+            <strong>Voice & Video Calls (WebRTC)</strong>
+            <p>Enable 1-on-1 audio/video calling</p>
+          </div>
+          <label class="switch-control">
+            <input type="checkbox" id="flag-allow_calls" data-flag="allow_calls">
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+
+        <div class="control-toggle-row">
+          <div>
+            <strong>File & Attachment Uploads</strong>
+            <p>Enable uploading images and files</p>
+          </div>
+          <label class="switch-control">
+            <input type="checkbox" id="flag-allow_file_uploads" data-flag="allow_file_uploads">
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW 7: PostgreSQL SQL Studio -->
+  <div class="admin-view" id="view-sql" style="display: none;">
+    <div class="admin-subview-container">
+      <div class="d-flex justify-between align-center mb-4">
+        <div>
+          <h2>💾 Interactive PostgreSQL SQL Studio</h2>
+          <p style="color: var(--text-secondary); font-size: 13px;">Execute database queries directly against the PostgreSQL engine with live table visualization.</p>
+        </div>
+      </div>
+
+      <div class="card p-4 mb-4">
+        <div class="control-group">
+          <label>SQL Query Statement</label>
+          <textarea id="sqlQueryInput" class="form-input font-mono" rows="4" placeholder="SELECT id, username, email, created_at FROM users ORDER BY id DESC LIMIT 10;"></textarea>
+        </div>
+        <div class="d-flex justify-between align-center">
+          <div class="preset-badges">
+            <button type="button" class="preset-badge sql-preset" data-sql="SELECT * FROM users ORDER BY id ASC LIMIT 20;">Users Table</button>
+            <button type="button" class="preset-badge sql-preset" data-sql="SELECT * FROM messages ORDER BY id DESC LIMIT 20;">Recent Messages</button>
+            <button type="button" class="preset-badge sql-preset" data-sql="SELECT * FROM sessions ORDER BY created_at DESC LIMIT 20;">Sessions</button>
+            <button type="button" class="preset-badge sql-preset" data-sql="SELECT * FROM system_settings;">System Settings</button>
+          </div>
+          <button class="btn btn-primary" id="btnExecuteSql">Execute Query</button>
+        </div>
+      </div>
+
+      <div id="sqlResultContainer" style="display: none;">
+        <div class="d-flex justify-between align-center mb-2">
+          <h4 id="sqlResultSummary" style="margin: 0;">Query Results</h4>
+          <span id="sqlExecutionTime" style="font-size: 12px; color: var(--text-muted);"></span>
+        </div>
+        <div class="admin-users-table-container">
+          <table class="admin-table" id="sqlResultTable">
+            <thead id="sqlResultThead"></thead>
+            <tbody id="sqlResultTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW 8: Admin Audit Logs -->
+  <div class="admin-view" id="view-audit" style="display: none;">
+    <div class="admin-subview-container">
+      <div class="d-flex justify-between align-center mb-4">
+        <div>
+          <h2>📜 Admin Action Audit Trail</h2>
+          <p style="color: var(--text-secondary); font-size: 13px;">Comprehensive chronological log of every administrative operation executed on the platform.</p>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="btnRefreshAudit">Refresh Logs</button>
+      </div>
+
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Admin</th>
+            <th>Action</th>
+            <th>Target</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyAuditLogs">
+          <tr><td colspan="5" class="text-center p-4">Loading audit logs...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Admin Ban Action Modal -->
+  <div class="admin-modal-backdrop" id="adminBanModal" style="display: none;">
+    <div class="admin-modal-dialog">
+      <div class="admin-modal-header">
+        <h3 id="banModalTitle">Ban User</h3>
+        <button class="btn-icon" id="btnCloseBanModal">✕</button>
+      </div>
+      <div class="admin-modal-body">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+          Banning this user will immediately revoke all active sessions, disconnect them from live chats, and show an unbypassable suspension lockout.
+        </p>
+        <div class="control-group">
+          <label>Quick Preset Reasons</label>
+          <div class="preset-badges">
+            <button type="button" class="preset-badge" data-reason="Spam or automated bot activity">Spam / Bots</button>
+            <button type="button" class="preset-badge" data-reason="Harassment, hate speech or toxicity">Toxicity / Harassment</button>
+            <button type="button" class="preset-badge" data-reason="Violation of SYNCH Terms of Service">Terms Violation</button>
+            <button type="button" class="preset-badge" data-reason="Suspicious account activity / Compromised">Suspicious / Hacked</button>
+          </div>
+        </div>
+        <div class="control-group">
+          <label>Ban Reason Description</label>
+          <input type="text" id="banReasonInput" class="form-input" placeholder="Enter reason shown to user" value="Violation of SYNCH Terms of Service">
+        </div>
+        <div class="control-group">
+          <label>Duration</label>
+          <select id="banDurationSelect" class="form-select">
+            <option value="0">Permanent Suspension</option>
+            <option value="24">24 Hours (1 Day)</option>
+            <option value="72">72 Hours (3 Days)</option>
+            <option value="168">7 Days (1 Week)</option>
+            <option value="720">30 Days (1 Month)</option>
+          </select>
+        </div>
+      </div>
+      <div class="admin-modal-footer">
+        <button class="btn btn-secondary" id="btnCancelBan">Cancel</button>
+        <button class="btn btn-danger" id="btnConfirmBan">Confirm & Ban User</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin Broadcast Modal -->
+  <div class="admin-modal-backdrop" id="adminBroadcastModal" style="display: none;">
+    <div class="admin-modal-dialog">
+      <div class="admin-modal-header">
+        <h3>📢 Global System Announcement</h3>
+        <button class="btn-icon" id="btnCloseBroadcastModal">✕</button>
+      </div>
+      <div class="admin-modal-body">
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+          This message will be pushed live via WebSockets to every connected user on Web and Android instantly.
+        </p>
+        <div class="control-group">
+          <label>Announcement Title</label>
+          <input type="text" id="broadcastTitleInput" class="form-input" placeholder="e.g. Scheduled Maintenance, Security Notice" value="System Announcement">
+        </div>
+        <div class="control-group">
+          <label>Announcement Message</label>
+          <textarea id="broadcastMessageInput" class="form-input" rows="3" placeholder="Type announcement details..."></textarea>
+        </div>
+        <div class="control-group">
+          <label>Urgency Level</label>
+          <select id="broadcastLevelSelect" class="form-select">
+            <option value="info">Info (Blue Glow)</option>
+            <option value="warning">Warning (Amber Glow)</option>
+            <option value="urgent">Urgent / Critical (Red Glow)</option>
+          </select>
+        </div>
+      </div>
+      <div class="admin-modal-footer">
+        <button class="btn btn-secondary" id="btnCancelBroadcast">Cancel</button>
+        <button class="btn btn-primary" id="btnConfirmBroadcast">Broadcast to All Users</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/auth.js?v=57"></script>
+  <script src="js/admin.js?v=57"></script>
+</body>
+
+</html>
+
+

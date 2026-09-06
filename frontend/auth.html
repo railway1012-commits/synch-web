@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="css/main.css?v=50">
+<link rel="stylesheet" href="css/auth.css?v=50">
+</head>
+<body class="auth-page">
+
+  <div class="auth-container">
+    <div class="auth-card" id="authCard">
+      <div class="auth-logo">
+        <h1>SYNCH</h1>
+        <p class="auth-tagline">Fast, private messaging for you and your people</p>
+      </div>
+
+      <!-- All step content is injected here by auth-flow.js -->
+      <div id="authStep"></div>
+    </div>
+  </div>
+
+  <div class="auth-loading-overlay" id="authLoadingOverlay">
+    <div class="auth-spinner"></div>
+    <p id="authLoadingText">Loading...</p>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/socket.js"></script>
+  <script src="js/auth.js?v=37"></script>
+  <script src="js/custom-dropdown.js?v=37"></script>
+  <script src="js/google-identity.js?v=37"></script>
+  <script src="js/auth-flow.js?v=37"></script>
+</body>
+</html>
