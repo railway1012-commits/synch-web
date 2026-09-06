@@ -1,17 +1,31 @@
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 
-const isLocalDb = !process.env.DATABASE_URL || 
-  process.env.DATABASE_URL.includes('localhost') || 
-  process.env.DATABASE_URL.includes('127.0.0.1') || 
-  process.env.DATABASE_URL.includes('host.docker.internal') ||
-  process.env.DATABASE_URL.includes('railway.internal') ||
-  process.env.DATABASE_URL.includes('sslmode=disable') ||
+const dbUrl = process.env.DATABASE_URL || 
+  process.env.DATABASE_PUBLIC_URL || 
+  process.env.DATABASE_PRIVATE_URL || 
+  process.env.POSTGRES_URL || 
+  process.env.POSTGRESQL_URL;
+
+const isDisableSsl = !dbUrl || 
+  dbUrl.includes('localhost') || 
+  dbUrl.includes('127.0.0.1') || 
+  dbUrl.includes('host.docker.internal') ||
+  dbUrl.includes('railway.internal') ||
+  dbUrl.includes('.railway') ||
+  dbUrl.includes('railway') ||
+  dbUrl.includes('sslmode=disable') ||
   process.env.DB_SSL === 'false';
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: isLocalDb ? false : { rejectUnauthorized: false }
+  connectionString: dbUrl,
+  ssl: (process.env.DB_SSL === 'true') ? { rejectUnauthorized: false } : (isDisableSsl ? false : { rejectUnauthorized: false }),
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000
+});
+
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle PostgreSQL client:', err.message);
 });
 
 async function initDatabase() {
@@ -21,6 +35,9 @@ async function initDatabase() {
     console.log('PostgreSQL database connected successfully');
   } catch (err) {
     console.error('Database connection failed:', err.message);
+    if (process.env.DATABASE_PUBLIC_URL && process.env.DATABASE_URL !== process.env.DATABASE_PUBLIC_URL) {
+      console.warn('Railway Tip: If private networking DNS is unreachable, set DATABASE_URL variable in Railway to reference your DATABASE_PUBLIC_URL.');
+    }
     return;
   }
   try {
