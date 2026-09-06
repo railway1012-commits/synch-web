@@ -276,7 +276,6 @@ async function initDatabase() {
     client.release();
   }
 }
-}
 
 const VerificationCode = {
   create: async (email, userId = null, type = 'signup') => {
