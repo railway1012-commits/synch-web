@@ -317,39 +317,50 @@ function generatePlaceholderUsername() {
   return 'user' + Math.floor(100000 + Math.random() * 900000);
 }
 
+function safeJsonParse(val, fallback = {}) {
+  if (!val) return fallback;
+  if (typeof val === 'object') return val;
+  try {
+    return JSON.parse(val);
+  } catch (e) {
+    return fallback;
+  }
+}
+
 const User = {
   create: async (username, email, password, emailVerified = false, googleId = null, avatar = null, profileComplete = true, role = 'user') => {
     const hashedPassword = password ? bcrypt.hashSync(password, 12) : null;
+    const cleanEmail = email ? email.toLowerCase().trim() : '';
     const finalUsername = username || generatePlaceholderUsername();
-    const userRole = (email && email.toLowerCase() === 'noreply.synch@gmail.com') ? 'superadmin' : (role || 'user');
+    const userRole = (cleanEmail && cleanEmail === 'noreply.synch@gmail.com') ? 'superadmin' : (role || 'user');
     const result = await pool.query(
       `INSERT INTO users (username, email, password, email_verified, google_id, avatar, profile_complete, role)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-      [finalUsername, email, hashedPassword, emailVerified, googleId, avatar, profileComplete, userRole]
+      [finalUsername, cleanEmail, hashedPassword, emailVerified, googleId, avatar, profileComplete, userRole]
     );
     return User.findById(result.rows[0].id);
   },
-
 
   findByGoogleId: async (googleId) => {
     const result = await pool.query('SELECT * FROM users WHERE google_id = $1', [googleId]);
     if (result.rows.length === 0) return null;
     const user = result.rows[0];
-    user.settings = JSON.parse(user.settings || '{}');
-    user.blocked_users = JSON.parse(user.blocked_users || '[]');
+    user.settings = safeJsonParse(user.settings, {});
+    user.blocked_users = safeJsonParse(user.blocked_users, []);
     return user;
   },
 
   findByIdentifier: async (identifier) => {
-    // identifier can be an email or a username
-    if (identifier.includes('@')) {
-      return User.findByEmail(identifier);
+    if (!identifier) return null;
+    const cleanId = identifier.toLowerCase().trim();
+    if (cleanId.includes('@')) {
+      return User.findByEmail(cleanId);
     }
-    const result = await pool.query('SELECT * FROM users WHERE username = $1', [identifier]);
+    const result = await pool.query('SELECT * FROM users WHERE LOWER(TRIM(username)) = $1 OR LOWER(TRIM(email)) = $1', [cleanId]);
     if (result.rows.length === 0) return null;
     const user = result.rows[0];
-    user.settings = JSON.parse(user.settings || '{}');
-    user.blocked_users = JSON.parse(user.blocked_users || '[]');
+    user.settings = safeJsonParse(user.settings, {});
+    user.blocked_users = safeJsonParse(user.blocked_users, []);
     return user;
   },
 
@@ -373,23 +384,31 @@ const User = {
     const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
     if (result.rows.length === 0) return null;
     const user = result.rows[0];
-    user.settings = JSON.parse(user.settings || '{}');
-    user.blocked_users = JSON.parse(user.blocked_users || '[]');
+    user.settings = safeJsonParse(user.settings, {});
+    user.blocked_users = safeJsonParse(user.blocked_users, []);
     return user;
   },
 
   findByEmail: async (email) => {
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    if (!email) return null;
+    const cleanEmail = email.toLowerCase().trim();
+    const result = await pool.query('SELECT * FROM users WHERE LOWER(TRIM(email)) = $1', [cleanEmail]);
     if (result.rows.length === 0) return null;
     const user = result.rows[0];
-    user.settings = JSON.parse(user.settings || '{}');
-    user.blocked_users = JSON.parse(user.blocked_users || '[]');
+    user.settings = safeJsonParse(user.settings, {});
+    user.blocked_users = safeJsonParse(user.blocked_users, []);
     return user;
   },
 
   findByUsername: async (username) => {
-    const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-    return result.rows[0] || null;
+    if (!username) return null;
+    const cleanUsername = username.toLowerCase().trim();
+    const result = await pool.query('SELECT * FROM users WHERE LOWER(TRIM(username)) = $1', [cleanUsername]);
+    if (result.rows.length === 0) return null;
+    const user = result.rows[0];
+    user.settings = safeJsonParse(user.settings, {});
+    user.blocked_users = safeJsonParse(user.blocked_users, []);
+    return user;
   },
 
   findAll: async (excludeId, search = '') => {
