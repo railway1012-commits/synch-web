@@ -103,8 +103,8 @@ exports.sendSignupCode = async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
     }
 
     const cleanEmail = email.toLowerCase().trim();
@@ -146,8 +146,9 @@ exports.sendSignupCode = async (req, res) => {
     const code = await VerificationCode.create(cleanEmail, null, 'signup');
     pendingSignups.set(cleanEmail, {
       username: username || null,
-      password,
-      expiresAt: Date.now() + 10 * 60 * 1000
+      password: password || null,
+      verified: false,
+      expiresAt: Date.now() + 15 * 60 * 1000
     });
 
     const emailSent = await sendVerificationEmail(cleanEmail, code);
@@ -177,36 +178,100 @@ exports.verifySignupCode = async (req, res) => {
     const cleanEmail = email.toLowerCase().trim();
     const pendingData = pendingSignups.get(cleanEmail);
 
-    if (!pendingData || pendingData.expiresAt < Date.now()) {
-      pendingSignups.delete(cleanEmail);
-      return res.status(400).json({ error: 'Signup session expired. Please request a new verification code.' });
-    }
-
     const isValid = await VerificationCode.verify(cleanEmail, code.trim(), 'signup');
 
     if (!isValid) {
       return res.status(400).json({ error: 'Incorrect or expired verification code' });
     }
 
-    const { username, password } = pendingData;
+    if (pendingData) {
+      pendingData.verified = true;
+    } else {
+      pendingSignups.set(cleanEmail, { verified: true, expiresAt: Date.now() + 15 * 60 * 1000 });
+    }
+
+    // If password was already provided (combined signup call), create user immediately
+    if (pendingData && pendingData.password) {
+      const { username, password } = pendingData;
+      pendingSignups.delete(cleanEmail);
+
+      const user = await User.create(username || null, cleanEmail, password, true, null, null, true);
+      const token = generateToken(user.id);
+
+      await Session.create(user.id, token, req.headers['user-agent'] || 'Unknown', req.ip);
+
+      return res.status(201).json({
+        success: true,
+        accountCreated: true,
+        message: 'Account created successfully',
+        token,
+        user: User.toPublicJSON(user)
+      });
+    }
+
+    res.json({
+      success: true,
+      verified: true,
+      message: 'Email verified successfully. Please set your password.'
+    });
+  } catch (error) {
+    console.error('Verify signup code error:', error);
+    res.status(500).json({ error: 'Error verifying code' });
+  }
+};
+
+exports.completeSignup = async (req, res) => {
+  try {
+    const { email, password, username } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+    const pendingData = pendingSignups.get(cleanEmail);
+
+    if (!pendingData || !pendingData.verified) {
+      return res.status(400).json({ error: 'Email has not been verified yet. Please verify your email first.' });
+    }
+
+    const existingUser = await User.findByEmail(cleanEmail);
+    if (existingUser) {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+
+    let finalUsername = username ? username.trim() : null;
+    if (finalUsername) {
+      const existingUsername = await User.findByUsername(finalUsername);
+      if (existingUsername) {
+        return res.status(400).json({ error: 'Username already taken' });
+      }
+    }
+
     pendingSignups.delete(cleanEmail);
 
-    const user = await User.create(username || null, cleanEmail, password, true, null, null, true);
+    const user = await User.create(finalUsername, cleanEmail, password, true, null, null, true);
     const token = generateToken(user.id);
 
     await Session.create(user.id, token, req.headers['user-agent'] || 'Unknown', req.ip);
 
     res.status(201).json({
       success: true,
+      accountCreated: true,
       message: 'Account created successfully',
       token,
       user: User.toPublicJSON(user)
     });
   } catch (error) {
-    console.error('Verify signup code error:', error);
-    res.status(500).json({ error: 'Error verifying code and creating account' });
+    console.error('Complete signup error:', error);
+    res.status(500).json({ error: 'Error creating account' });
   }
 };
+
+exports.signup = exports.sendSignupCode;
 
 exports.resendCode = async (req, res) => {
   try {
@@ -251,12 +316,16 @@ exports.resendCode = async (req, res) => {
 exports.signup = async (req, res) => {
   try {
     const { email, password, username, code } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
     }
 
-    if (code) {
+    if (code && password) {
       return exports.verifySignupCode(req, res);
+    }
+
+    if (password && !code) {
+      return exports.completeSignup(req, res);
     }
 
     return exports.sendSignupCode(req, res);

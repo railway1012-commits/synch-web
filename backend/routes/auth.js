@@ -15,6 +15,7 @@ router.post('/check-identifier', checkLimiter, authController.checkIdentifier);
 router.post('/signup', authLimiter, authController.signup);
 router.post('/signup/send-code', emailSendLimiter, authController.sendSignupCode);
 router.post('/signup/verify', authLimiter, authController.verifySignupCode);
+router.post('/signup/complete', authLimiter, authController.completeSignup);
 router.post('/resend-code', emailSendLimiter, authController.resendCode);
 router.post('/login', authLimiter, authController.login);
 router.post('/login/verify-2fa', authLimiter, authController.verifyLogin2FA);

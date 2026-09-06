@@ -12,12 +12,28 @@
     step: 'entry'
   };
 
+  let overlayShowTime = 0;
+
   function showLoading(text) {
     overlayText.textContent = text || 'Loading...';
+    overlayShowTime = Date.now();
     overlay.classList.add('visible');
   }
-  function hideLoading() {
+
+  async function hideLoading() {
+    const elapsed = Date.now() - overlayShowTime;
+    const remaining = Math.max(0, 1500 - elapsed);
+    if (remaining > 0) {
+      await new Promise(r => setTimeout(r, remaining));
+    }
     overlay.classList.remove('visible');
+  }
+
+  function triggerStepAnimation() {
+    if (!stepEl) return;
+    stepEl.classList.remove('auth-step-animate');
+    void stepEl.offsetWidth;
+    stepEl.classList.add('auth-step-animate');
   }
 
   function looksLikeEmail(v) {
@@ -82,6 +98,7 @@
   // ---------- Step: Entry (tabs + identifier + google) ----------
   function renderEntry() {
     flow.step = 'entry';
+    triggerStepAnimation();
     stepEl.innerHTML = `
       <div class="auth-tabs">
         <button type="button" class="auth-tab ${flow.tab === 'signin' ? 'active' : ''}" data-tab="signin">Sign In</button>
@@ -132,16 +149,29 @@
         method: 'POST',
         body: JSON.stringify({ identifier: flow.identifier })
       });
-      hideLoading();
 
       if (!res.exists) {
         if (flow.tab === 'signup') {
-          renderCreatePassword();
+          try {
+            showLoading('Sending verification code...');
+            const sendRes = await apiRequest('/api/auth/signup/send-code', {
+              method: 'POST',
+              body: JSON.stringify({ email: flow.identifier })
+            });
+            await hideLoading();
+            renderSignupVerifyCode(flow.identifier, sendRes.maskedEmail || flow.identifier);
+          } catch (sendErr) {
+            await hideLoading();
+            renderError(sendErr.message);
+          }
         } else {
+          await hideLoading();
           renderNotFound();
         }
         return;
       }
+
+      await hideLoading();
 
       if (res.hasGoogle && !res.hasPassword) {
         renderGoogleOnly();
@@ -157,7 +187,7 @@
       // Sign-in tab, account exists with a password (maybe also Google).
       renderPassword(res.hasGoogle);
     } catch (err) {
-      hideLoading();
+      await hideLoading();
       renderError(err.message);
     }
   }
@@ -167,6 +197,7 @@
     let showingPassword = !hasGoogle;
 
     function draw() {
+      triggerStepAnimation();
       stepEl.innerHTML = `
         <button type="button" class="btn-back" id="backBtn">&larr; Back</button>
         <h2 class="auth-step-title">${flow.identifier}</h2>
@@ -183,7 +214,7 @@
               <span>Remember me</span>
             </label>
             <button type="submit" class="btn btn-primary">Sign In</button>
-            <button type="button" class="btn-link" id="forgotPasswordBtn">Forgot password?</button>
+            <button type="button" class="btn-text-link" id="forgotPasswordBtn">Forgot password?</button>
           </form>
         ` : ''}
         ${hasGoogle ? `<button type="button" class="btn-link btn-link-center" id="toggleWayBtn">${showingPassword ? 'Continue with Google instead' : 'Sign in with a password instead'}</button>` : ''}
@@ -264,6 +295,7 @@
 
   // ---------- Step: account exists via Google only ----------
   function renderGoogleOnly() {
+    triggerStepAnimation();
     stepEl.innerHTML = `
       <button type="button" class="btn-back" id="backBtn">&larr; Back</button>
       <div class="auth-message auth-message-center">
@@ -283,10 +315,10 @@
           method: 'POST',
           body: JSON.stringify({ credential, expectedEmail: flow.identifier })
         });
-        hideLoading();
+        await hideLoading();
         completeAuth(res.token, res.user, true);
       } catch (err) {
-        hideLoading();
+        await hideLoading();
         if (err.rawError === 'GOOGLE_EMAIL_MISMATCH') {
           renderGoogleMismatch();
         } else {
@@ -297,6 +329,7 @@
   }
 
   function renderGoogleMismatch() {
+    triggerStepAnimation();
     stepEl.innerHTML = `
       <button type="button" class="btn-back" id="backBtn">&larr; Back</button>
       <div class="auth-message auth-message-center">
@@ -334,6 +367,7 @@
 
   function render2FADevicePrompt(data, remember) {
     if (activeChallengePollTimer) clearInterval(activeChallengePollTimer);
+    triggerStepAnimation();
 
     stepEl.innerHTML = `
       <button type="button" class="btn-back" id="backBtn">&larr; Back</button>
@@ -361,7 +395,7 @@
           <button type="button" class="btn btn-secondary" id="resendDevicePromptBtn" style="width: 100%;">
             Resend request
           </button>
-          <button type="button" class="btn-link" id="tryAnotherWayBtn" style="background: none; border: none; color: var(--accent); font-size: 14px; cursor: pointer; padding: 8px; font-weight: 500;">
+          <button type="button" class="btn-link" id="tryAnotherWayBtn">
             Try another way
           </button>
         </div>
@@ -400,6 +434,7 @@
     });
 
   function render2FAApprovedScreen(token, user, remember) {
+    triggerStepAnimation();
     stepEl.innerHTML = `
       <div class="auth-message auth-message-center" style="margin-top: 15px;">
         <div class="auth-icon-circle" style="width: 64px; height: 64px; margin: 0 auto 18px auto; background: rgba(16, 185, 129, 0.15); color: var(--success, #10b981); display: flex; align-items: center; justify-content: center; border-radius: 50%;">
@@ -430,6 +465,7 @@
   }
 
   function render2FADeclinedScreen(data, remember) {
+    triggerStepAnimation();
     stepEl.innerHTML = `
       <div class="auth-message auth-message-center" style="margin-top: 15px;">
         <div class="auth-icon-circle" style="width: 64px; height: 64px; margin: 0 auto 18px auto; background: rgba(239, 68, 68, 0.15); color: var(--danger); display: flex; align-items: center; justify-content: center; border-radius: 50%;">
@@ -509,6 +545,7 @@
   // ---------- 2FA: Methods Choice (Try Another Way) ----------
   function render2FAMethodsChoice(data, remember) {
     if (activeChallengePollTimer) clearInterval(activeChallengePollTimer);
+    triggerStepAnimation();
 
     stepEl.innerHTML = `
       <button type="button" class="btn-back" id="backBtn">&larr; Back</button>
@@ -596,6 +633,7 @@
   // ---------- 2FA: Email Verification Code ----------
   function render2FAEmailCode(data, remember) {
     if (activeChallengePollTimer) clearInterval(activeChallengePollTimer);
+    triggerStepAnimation();
 
     stepEl.innerHTML = `
       <button type="button" class="btn-back" id="backBtn">&larr; Back</button>
@@ -615,11 +653,11 @@
 
         <div id="email2FAStatusMsg" style="display: none; padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-top: 14px; text-align: center; font-weight: 500;"></div>
 
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 20px;">
-          <button type="button" class="btn-link" id="resend2FAEmailBtn" style="background: none; border: none; color: var(--text-secondary); font-size: 13px; cursor: pointer;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 16px;">
+          <button type="button" class="btn-text-link" id="resend2FAEmailBtn">
             Didn't receive a code? <span style="color: var(--accent); font-weight: 500;">Resend</span>
           </button>
-          <button type="button" class="btn-link" id="tryAnotherWayFromEmailBtn" style="background: none; border: none; color: var(--accent); font-size: 13px; cursor: pointer; font-weight: 500;">
+          <button type="button" class="btn-link" id="tryAnotherWayFromEmailBtn">
             Try another way
           </button>
         </div>
@@ -712,6 +750,7 @@
 
   // ---------- Step: sign-in tab, account not found ----------
   function renderNotFound() {
+    triggerStepAnimation();
     stepEl.innerHTML = `
       <button type="button" class="btn-back" id="backBtn">&larr; Back</button>
       <div class="auth-message auth-message-center">
@@ -725,10 +764,21 @@
       <button type="button" class="btn-link" id="useAnotherBtn">Try a different email</button>
     `;
     document.getElementById('backBtn').addEventListener('click', renderEntry);
-    document.getElementById('createAccountBtn').addEventListener('click', () => {
+    document.getElementById('createAccountBtn').addEventListener('click', async () => {
       flow.tab = 'signup';
       if (looksLikeEmail(flow.identifier)) {
-        renderCreatePassword();
+        try {
+          showLoading('Sending verification code...');
+          const sendRes = await apiRequest('/api/auth/signup/send-code', {
+            method: 'POST',
+            body: JSON.stringify({ email: flow.identifier })
+          });
+          await hideLoading();
+          renderSignupVerifyCode(flow.identifier, sendRes.maskedEmail || flow.identifier);
+        } catch (sendErr) {
+          await hideLoading();
+          renderError(sendErr.message);
+        }
       } else {
         renderEntry();
       }
@@ -739,73 +789,19 @@
     });
   }
 
-  // ---------- Step: create password (new email signup) ----------
-  function renderCreatePassword() {
-    stepEl.innerHTML = `
-      <button type="button" class="btn-back" id="backBtn">&larr; Back</button>
-      <h2 class="auth-step-title">Create your password</h2>
-      <p class="auth-subtext">${flow.identifier}</p>
-      <form id="createPasswordForm" class="auth-form">
-        <div class="input-group">
-          <label>Password</label>
-          <input type="password" id="pw1" autocomplete="new-password" placeholder="At least 6 characters">
-        </div>
-        <div class="input-group">
-          <label>Confirm password</label>
-          <input type="password" id="pw2" autocomplete="new-password" placeholder="Re-enter your password">
-        </div>
-        <button type="submit" class="btn btn-primary" id="continueBtn" disabled>Continue</button>
-      </form>
-    `;
-    document.getElementById('backBtn').addEventListener('click', renderEntry);
-
-    const pw1 = document.getElementById('pw1');
-    const pw2 = document.getElementById('pw2');
-    const btn = document.getElementById('continueBtn');
-
-    function validate() {
-      const ok = pw1.value.length >= 6 && pw1.value === pw2.value;
-      btn.disabled = !ok;
-      return ok;
-    }
-    pw1.addEventListener('input', validate);
-    pw2.addEventListener('input', validate);
-
-    document.getElementById('createPasswordForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      clearFieldError(pw2);
-      if (pw1.value.length < 6) return showFieldError(pw1, 'Must be at least 6 characters');
-      if (pw1.value !== pw2.value) return showFieldError(pw2, 'Passwords do not match');
-
-      const userPassword = pw1.value;
-
-      try {
-        showLoading('Sending verification code...');
-        const res = await apiRequest('/api/auth/signup/send-code', {
-          method: 'POST',
-          body: JSON.stringify({ email: flow.identifier, password: userPassword })
-        });
-        hideLoading();
-        renderSignupVerifyCode(flow.identifier, userPassword, res.maskedEmail || flow.identifier);
-      } catch (err) {
-        hideLoading();
-        showFieldError(pw2, err.message);
-      }
-    });
-  }
-
   // ---------- Step: Verify Signup Email Code ----------
   let signupResendTimerInterval = null;
 
-  function renderSignupVerifyCode(email, password, maskedEmail) {
+  function renderSignupVerifyCode(email, maskedEmail) {
     if (signupResendTimerInterval) clearInterval(signupResendTimerInterval);
+    triggerStepAnimation();
 
     stepEl.innerHTML = `
       <button type="button" class="btn-back" id="backBtn">&larr; Back</button>
       <div style="margin-top: 10px;">
         <h2 class="auth-step-title" style="margin-bottom: 6px;">Verify your email</h2>
         <p style="color: var(--text-secondary); font-size: var(--font-sm); margin-bottom: 20px;">
-          We sent a 6-digit verification code to <strong>${maskedEmail || email}</strong>. Enter it below to complete your registration.
+          We sent a 6-digit verification code to <strong>${maskedEmail || email}</strong>. Enter it below to verify your email address.
         </p>
 
         <form id="signupVerifyForm" class="auth-form">
@@ -813,7 +809,7 @@
             <label for="signupOtpInput">6-Digit Verification Code</label>
             <input type="text" id="signupOtpInput" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" placeholder="123456" autocomplete="one-time-code" required style="font-size: 20px; letter-spacing: 4px; text-align: center;">
           </div>
-          <button type="submit" class="btn btn-primary" id="verifySignupBtn">Verify & Continue</button>
+          <button type="submit" class="btn btn-primary" id="verifySignupBtn">Verify Code</button>
         </form>
 
         <div id="signupStatusMsg" style="display: none; padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-top: 14px; text-align: center; font-weight: 500;"></div>
@@ -828,7 +824,7 @@
 
     document.getElementById('backBtn').addEventListener('click', () => {
       if (signupResendTimerInterval) clearInterval(signupResendTimerInterval);
-      renderCreatePassword();
+      renderEntry();
     });
 
     const resendBtn = document.getElementById('resendSignupCodeBtn');
@@ -856,7 +852,7 @@
           method: 'POST',
           body: JSON.stringify({ email, type: 'signup' })
         });
-        hideLoading();
+        await hideLoading();
         if (msgEl) {
           msgEl.style.display = 'block';
           msgEl.style.background = 'rgba(16, 185, 129, 0.12)';
@@ -880,7 +876,7 @@
           }
         }, 1000);
       } catch (err) {
-        hideLoading();
+        await hideLoading();
         if (msgEl) {
           msgEl.style.display = 'block';
           msgEl.style.background = 'rgba(239, 68, 68, 0.12)';
@@ -899,18 +895,76 @@
       }
 
       try {
-        showLoading('Verifying code & creating account...');
+        showLoading('Verifying code...');
         const res = await apiRequest('/api/auth/signup/verify', {
           method: 'POST',
           body: JSON.stringify({ email, code })
         });
         if (signupResendTimerInterval) clearInterval(signupResendTimerInterval);
-        hideLoading();
+        await hideLoading();
+        renderCreatePassword(email);
+      } catch (err) {
+        await hideLoading();
+        showFieldError(codeInput, err.message);
+      }
+    });
+  }
+
+  // ---------- Step: create password (new email signup) ----------
+  function renderCreatePassword(email) {
+    triggerStepAnimation();
+    stepEl.innerHTML = `
+      <button type="button" class="btn-back" id="backBtn">&larr; Back</button>
+      <h2 class="auth-step-title">Create your password</h2>
+      <p class="auth-subtext">${email || flow.identifier}</p>
+      <form id="createPasswordForm" class="auth-form">
+        <div class="input-group">
+          <label>Password</label>
+          <input type="password" id="pw1" autocomplete="new-password" placeholder="At least 6 characters">
+        </div>
+        <div class="input-group">
+          <label>Confirm password</label>
+          <input type="password" id="pw2" autocomplete="new-password" placeholder="Re-enter your password">
+        </div>
+        <button type="submit" class="btn btn-primary" id="continueBtn" disabled>Complete Registration</button>
+      </form>
+    `;
+    document.getElementById('backBtn').addEventListener('click', () => {
+      renderSignupVerifyCode(email || flow.identifier);
+    });
+
+    const pw1 = document.getElementById('pw1');
+    const pw2 = document.getElementById('pw2');
+    const btn = document.getElementById('continueBtn');
+
+    function validate() {
+      const ok = pw1.value.length >= 6 && pw1.value === pw2.value;
+      btn.disabled = !ok;
+      return ok;
+    }
+    pw1.addEventListener('input', validate);
+    pw2.addEventListener('input', validate);
+
+    document.getElementById('createPasswordForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearFieldError(pw2);
+      if (pw1.value.length < 6) return showFieldError(pw1, 'Must be at least 6 characters');
+      if (pw1.value !== pw2.value) return showFieldError(pw2, 'Passwords do not match');
+
+      const userPassword = pw1.value;
+
+      try {
+        showLoading('Creating account...');
+        const res = await apiRequest('/api/auth/signup/complete', {
+          method: 'POST',
+          body: JSON.stringify({ email: email || flow.identifier, password: userPassword })
+        });
+        await hideLoading();
         saveSession(res.token, res.user, true);
         renderProfileSetup();
       } catch (err) {
-        hideLoading();
-        showFieldError(codeInput, err.message);
+        await hideLoading();
+        showFieldError(pw2, err.message);
       }
     });
   }
@@ -939,6 +993,7 @@
 
   // ---------- Step: optional password after Google signup ----------
   function renderGooglePasswordOptional() {
+    triggerStepAnimation();
     stepEl.innerHTML = `
       <h2 class="auth-step-title">Create a password (optional)</h2>
       <p class="auth-subtext">You can use this to sign in without Google later.</p>
@@ -985,6 +1040,7 @@
 
   // ---------- Step: profile setup (username + DOB, avatar optional) ----------
   function renderProfileSetup() {
+    triggerStepAnimation();
     stepEl.innerHTML = `
       <h2 class="auth-step-title">Set up your profile</h2>
       <form id="profileForm" class="auth-form">
