@@ -112,13 +112,6 @@ userController.setIO(io);
 adminController.setIO(io);
 
 const os = require('os');
-const https = require('https');
-const selfsigned = require('selfsigned');
-
-// Generate SSL cert for secure context on LAN mobile devices
-const pems = selfsigned.generate([{ name: 'commonName', value: 'synch.local' }], { days: 365 });
-const httpsServer = https.createServer({ key: pems.private, cert: pems.cert }, app);
-io.attach(httpsServer);
 
 async function startServer() {
   try {
@@ -141,6 +134,11 @@ async function startServer() {
 
     if (process.env.ENABLE_LOCAL_HTTPS === 'true') {
       try {
+        const https = require('https');
+        const selfsigned = require('selfsigned');
+        const pems = selfsigned.generate([{ name: 'commonName', value: 'synch.local' }], { days: 365 });
+        const httpsServer = https.createServer({ key: pems.private, cert: pems.cert }, app);
+        io.attach(httpsServer);
         const HTTPS_PORT = process.env.HTTPS_PORT || 3443;
         httpsServer.listen(HTTPS_PORT, HOST, () => {
           console.log(`LAN HTTPS Server running on https://${HOST}:${HTTPS_PORT}`);
