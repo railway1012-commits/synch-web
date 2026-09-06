@@ -133,7 +133,6 @@ async function startServer() {
   ║                                                            ║
   ║   Listen Address: http://${HOST}:${PORT}                   ║
   ║   Local Access:   http://localhost:${PORT}                 ║
-  ║   LAN Access:     http://${localIp}:${PORT}               ║
   ║                                                            ║
   ╚════════════════════════════════════════════════════════════╝
       `);
