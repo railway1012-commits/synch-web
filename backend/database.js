@@ -133,40 +133,13 @@ async function initDatabase() {
 
       CREATE INDEX IF NOT EXISTS idx_friend_requests_receiver ON friend_requests(receiver_id);
       CREATE INDEX IF NOT EXISTS idx_friend_requests_sender ON friend_requests(sender_id);
-    `);
 
-    // Safe column migrations
-    await client.query(`ALTER TABLE users ALTER COLUMN password DROP NOT NULL;`);
-    await client.query(`ALTER TABLE users ALTER COLUMN email DROP NOT NULL;`);
-    await client.query(`DO $$ BEGIN ALTER TABLE users ALTER COLUMN synch_id DROP NOT NULL; EXCEPTION WHEN undefined_column THEN END $$;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT 'Hey there! I am using Synch.';`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT UNIQUE;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS dob DATE;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_complete BOOLEAN DEFAULT TRUE;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT DEFAULT 'Your account has been suspended for violating our terms of service.';`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_at TIMESTAMP NULL;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMP NULL;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_by INTEGER NULL;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_shadowbanned BOOLEAN DEFAULT FALSE;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_frozen BOOLEAN DEFAULT FALSE;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS badge TEXT DEFAULT NULL;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_notes TEXT DEFAULT NULL;`);
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user';`);
-    await client.query(`UPDATE users SET role = 'superadmin' WHERE email = 'noreply.synch@gmail.com';`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);`);
-    await client.query(`DO $$ BEGIN ALTER TABLE admin_audit_logs ADD COLUMN IF NOT EXISTS ip TEXT; EXCEPTION WHEN undefined_table THEN END $$;`);
-
-
-    // Super Admin Tables
-    await client.query(`
       CREATE TABLE IF NOT EXISTS system_settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
       INSERT INTO system_settings (key, value) VALUES
         ('maintenance_mode', 'false'),
         ('allow_signups', 'true'),
@@ -265,11 +238,44 @@ async function initDatabase() {
       CREATE INDEX IF NOT EXISTS idx_user_ip_history_ip ON user_ip_history(ip);
     `);
 
+    // Safe column migrations
+    const safeQuery = async (sql) => {
+      try {
+        await client.query(sql);
+      } catch (err) {
+        console.log(`Migration step notice: ${err.message}`);
+      }
+    };
+
+    await safeQuery(`ALTER TABLE users ALTER COLUMN password DROP NOT NULL;`);
+    await safeQuery(`ALTER TABLE users ALTER COLUMN email DROP NOT NULL;`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT 'Hey there! I am using Synch.';`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT UNIQUE;`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS dob DATE;`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_complete BOOLEAN DEFAULT TRUE;`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE;`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT DEFAULT 'Your account has been suspended for violating our terms of service.';`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_at TIMESTAMP NULL;`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMP NULL;`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_by INTEGER NULL;`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_shadowbanned BOOLEAN DEFAULT FALSE;`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_frozen BOOLEAN DEFAULT FALSE;`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS badge TEXT DEFAULT NULL;`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_notes TEXT DEFAULT NULL;`);
+    await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user';`);
+    await safeQuery(`UPDATE users SET role = 'superadmin' WHERE email = 'noreply.synch@gmail.com';`);
+    await safeQuery(`CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);`);
+    await safeQuery(`ALTER TABLE admin_audit_logs ADD COLUMN IF NOT EXISTS ip TEXT;`);
 
     console.log('PostgreSQL database initialized');
+  } catch (err) {
+    console.error('Error during database initialization:', err.message);
   } finally {
     client.release();
   }
+}
 }
 
 const VerificationCode = {
