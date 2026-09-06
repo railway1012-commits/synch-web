@@ -95,9 +95,9 @@ body.embedded .settings-content {
     height: 640px;
     max-height: 88vh;
     min-height: 0;
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-xl, 32px);
     border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
     overflow: hidden;
   }
 
@@ -153,24 +153,24 @@ body.embedded .settings-content {
 
 .settings-sidebar-header h1 {
   font-size: var(--font-xl);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .settings-nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .settings-nav-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
-  border-radius: var(--radius-md);
+  padding: 12px 18px;
+  border-radius: var(--radius-pill);
   color: var(--text-secondary);
   font-size: var(--font-sm);
-  font-weight: 500;
+  font-weight: 600;
   transition: all var(--transition-fast);
   cursor: pointer;
 }
@@ -178,11 +178,13 @@ body.embedded .settings-content {
 .settings-nav-item:hover {
   background: var(--bg-tertiary);
   color: var(--text-primary);
+  transform: translateX(2px);
 }
 
 .settings-nav-item.active {
   background: var(--accent);
   color: #ffffff;
+  box-shadow: 0 4px 14px rgba(0, 132, 255, 0.35);
 }
 
 .settings-nav-item svg {
@@ -210,7 +212,7 @@ body.embedded .settings-content {
 
 .settings-section > h2 {
   font-size: var(--font-2xl);
-  font-weight: 600;
+  font-weight: 700;
   margin-bottom: 8px;
 }
 
@@ -226,9 +228,9 @@ body.embedded .settings-content {
 
 .settings-group h3 {
   font-size: var(--font-sm);
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
   color: var(--text-muted);
   margin-bottom: 16px;
   padding-left: 4px;
@@ -239,11 +241,11 @@ body.embedded .settings-content {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px;
+  padding: 18px 20px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  margin-bottom: 8px;
+  border-radius: 20px;
+  margin-bottom: 10px;
 }
 
 .settings-item-info {
@@ -303,10 +305,10 @@ body.embedded .settings-content {
 
 .theme-option {
   flex: 1;
-  padding: 12px 16px;
+  padding: 14px 18px;
   background: var(--bg-tertiary);
   border: 2px solid var(--border-color);
-  border-radius: var(--radius-md);
+  border-radius: 20px;
   text-align: center;
   cursor: pointer;
   transition: all var(--transition);
@@ -316,11 +318,13 @@ body.embedded .settings-content {
 
 .theme-option:hover {
   border-color: var(--text-muted);
+  transform: translateY(-2px);
 }
 
 .theme-option.active {
   border-color: var(--accent);
   background: var(--accent-glow);
+  box-shadow: 0 4px 16px rgba(0, 132, 255, 0.25);
 }
 
 .theme-option-icon {
@@ -373,18 +377,20 @@ body.embedded .settings-content {
 
 /* Select Input */
 .select-input {
-  padding: 10px 16px;
+  padding: 10px 18px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-pill);
   color: var(--text-primary);
   cursor: pointer;
   min-width: 140px;
   font-size: var(--font-sm);
+  transition: all var(--transition);
 }
 
 .select-input:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 /* Range Input */
@@ -399,7 +405,7 @@ body.embedded .settings-content {
   flex: 1;
   height: 6px;
   background: var(--bg-tertiary);
-  border-radius: 3px;
+  border-radius: var(--radius-pill);
   appearance: none;
   cursor: pointer;
 }
@@ -427,10 +433,10 @@ body.embedded .settings-content {
   display: flex;
   align-items: center;
   gap: 20px;
-  padding: 24px;
+  padding: 24px 28px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  border-radius: 28px;
   margin-bottom: 32px;
 }
 
@@ -483,11 +489,11 @@ body.embedded .settings-content {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px;
+  padding: 16px 20px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  margin-bottom: 8px;
+  border-radius: 20px;
+  margin-bottom: 10px;
 }
 
 .session-item.current {
@@ -506,7 +512,7 @@ body.embedded .settings-content {
   width: 40px;
   height: 40px;
   background: var(--bg-tertiary);
-  border-radius: var(--radius-sm);
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -540,12 +546,12 @@ body.embedded .settings-content {
 
 .session-badge {
   font-size: var(--font-xs);
-  padding: 4px 8px;
+  padding: 3px 10px;
   background: var(--accent);
   color: #ffffff;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-pill);
   margin-left: 8px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 /* Blocked Users */
@@ -554,11 +560,11 @@ body.embedded .settings-content {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px;
+  padding: 14px 18px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  margin-bottom: 8px;
+  border-radius: 20px;
+  margin-bottom: 10px;
 }
 
 .blocked-user-info {
@@ -574,10 +580,10 @@ body.embedded .settings-content {
 
 /* Danger Zone */
 .danger-zone {
-  padding: 24px;
+  padding: 26px 28px;
   background: rgba(239, 68, 68, 0.05);
   border: 1px solid rgba(239, 68, 68, 0.2);
-  border-radius: var(--radius-lg);
+  border-radius: 24px;
 }
 
 .danger-zone h3 {
@@ -771,8 +777,8 @@ body.embedded .settings-content {
   height: 640px;
   max-height: 88vh;
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-xl, 32px);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
   background: var(--bg-primary);
 }
 .settings-overlay-close {
