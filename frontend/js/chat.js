@@ -258,6 +258,7 @@ function switchAppMode(mode) {
 }
 
 function switchSettingsSection(sectionId, openMobileDetail = true) {
+  if (!sectionId) return;
   activeSettingsSection = sectionId;
 
   document.querySelectorAll('#settingsCategoriesNav .settings-cat-item').forEach(item => {
@@ -285,8 +286,9 @@ function switchSettingsSection(sectionId, openMobileDetail = true) {
   }
 }
 
-document.querySelectorAll('#settingsCategoriesNav .settings-cat-item').forEach(item => {
+document.querySelectorAll('#settingsCategoriesNav .settings-cat-item[data-section]').forEach(item => {
   item.addEventListener('click', () => {
+    if (!item.dataset.section) return;
     switchSettingsSection(item.dataset.section, true);
   });
 });
