@@ -27,6 +27,7 @@ router.post('/reset-password', authLimiter, authController.resetPassword);
 // 2FA Endpoints (Public & Authenticated)
 router.post('/2fa/send-device-prompt', checkLimiter, authController.sendDevicePrompt);
 router.get('/2fa/check-device-prompt/:challengeId', checkLimiter, authController.checkDevicePrompt);
+router.post('/2fa/cancel-device-prompt', checkLimiter, authController.cancelDevicePrompt);
 router.post('/2fa/send-email-code', emailSendLimiter, authController.send2FAEmailCode);
 router.post('/2fa/verify-password', auth, authController.verifyPasswordFor2FA);
 router.post('/2fa/respond-device-prompt', auth, authController.respondDevicePrompt);

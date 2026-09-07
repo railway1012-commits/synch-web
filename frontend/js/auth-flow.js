@@ -56,6 +56,30 @@
     el.classList.remove('has-error');
   }
 
+  function markSelfChallenge(challengeId) {
+    if (!challengeId) return;
+    try {
+      localStorage.setItem('synch_self_challenge_' + challengeId, 'true');
+      sessionStorage.setItem('synch_self_challenge_' + challengeId, 'true');
+      localStorage.setItem('synch_last_self_challenge', challengeId);
+      let recent = [];
+      try {
+        recent = JSON.parse(localStorage.getItem('synch_recent_self_challenges') || '[]');
+      } catch (e) {}
+      recent.push({ id: challengeId, at: Date.now() });
+      recent = recent.filter(r => (Date.now() - r.at) < 30 * 60 * 1000).slice(-10);
+      localStorage.setItem('synch_recent_self_challenges', JSON.stringify(recent));
+    } catch (e) {}
+  }
+
+  function cancelDevicePromptServer(challengeId) {
+    if (!challengeId) return;
+    apiRequest('/api/auth/2fa/cancel-device-prompt', {
+      method: 'POST',
+      body: JSON.stringify({ challengeId })
+    }).catch(() => {});
+  }
+
   function googleButtonHTML(label) {
     if (!flow.googleReady) {
       return `<div class="btn-google-skeleton"></div>`;
@@ -245,6 +269,7 @@
             });
             if (res.requires2FA) {
               hideLoading();
+              if (res.challengeId) markSelfChallenge(res.challengeId);
               if (res.defaultMethod === 'device' && res.challengeId) {
                 render2FADevicePrompt(res, remember);
               } else {
@@ -367,6 +392,7 @@
 
   function render2FADevicePrompt(data, remember) {
     if (activeChallengePollTimer) clearInterval(activeChallengePollTimer);
+    if (data?.challengeId) markSelfChallenge(data.challengeId);
     triggerStepAnimation();
 
     stepEl.innerHTML = `
@@ -404,11 +430,13 @@
 
     document.getElementById('backBtn').addEventListener('click', () => {
       if (activeChallengePollTimer) clearInterval(activeChallengePollTimer);
+      if (data?.challengeId) cancelDevicePromptServer(data.challengeId);
       renderEntry();
     });
 
     document.getElementById('tryAnotherWayBtn').addEventListener('click', () => {
       if (activeChallengePollTimer) clearInterval(activeChallengePollTimer);
+      if (data?.challengeId) cancelDevicePromptServer(data.challengeId);
       render2FAMethodsChoice(data, remember);
     });
 
@@ -422,6 +450,7 @@
         });
         hideLoading();
         data.challengeId = res.challengeId;
+        markSelfChallenge(res.challengeId);
         render2FADevicePrompt(data, remember);
       } catch (err) {
         hideLoading();
@@ -606,6 +635,7 @@
         });
         hideLoading();
         data.challengeId = res.challengeId;
+        markSelfChallenge(res.challengeId);
         render2FADevicePrompt(data, remember);
       } catch (err) {
         hideLoading();
@@ -614,6 +644,7 @@
     });
 
     document.getElementById('chooseEmailCodeBtn').addEventListener('click', async () => {
+      if (data?.challengeId) cancelDevicePromptServer(data.challengeId);
       try {
         showLoading('Sending verification code...');
         const userIdentifier = flow.identifier || data.email || data.identifier;
@@ -1119,6 +1150,7 @@
 
     if (res.requires2FA) {
       flow.identifier = res.email || flow.identifier;
+      if (res.challengeId) markSelfChallenge(res.challengeId);
       if (res.defaultMethod === 'device' && res.challengeId) {
         render2FADevicePrompt(res, remember);
       } else {

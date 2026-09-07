@@ -338,6 +338,33 @@ exports.signup = async (req, res) => {
 const pending2FA = new Map();
 const deviceChallenges = new Map();
 
+function resolveUserDeviceChallenges(userId, socketIO = null, reason = 'completed') {
+  if (!userId) return;
+  const ioInstance = socketIO || io;
+  for (const [challengeId, ch] of deviceChallenges.entries()) {
+    if (ch.userId === userId) {
+      ch.status = reason;
+      deviceChallenges.delete(challengeId);
+      if (ioInstance) {
+        ioInstance.to(`user:${userId}`).emit('auth:device_prompt_resolved', {
+          challengeId,
+          status: reason
+        });
+      }
+    }
+  }
+}
+
+// Prune expired challenges every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, challenge] of deviceChallenges.entries()) {
+    if (now > challenge.expiresAt || challenge.status !== 'pending') {
+      deviceChallenges.delete(id);
+    }
+  }
+}, 5 * 60 * 1000);
+
 function parseDeviceName(userAgent) {
   if (!userAgent) return 'Unknown Device';
   let browser = 'Browser';
@@ -524,6 +551,7 @@ exports.login = async (req, res) => {
     if (socketIO) {
       socketIO.to(`user:${user.id}`).emit('session:updated', { type: 'created' });
     }
+    resolveUserDeviceChallenges(user.id, socketIO, 'completed');
 
     const updatedUser = await User.findById(user.id);
 
@@ -664,6 +692,7 @@ exports.googleAuth = async (req, res) => {
       await User.updateStatus(user.id, 'online');
       const socketIO = req.app?.get('io') || io;
       if (socketIO) socketIO.to(`user:${user.id}`).emit('session:updated', { type: 'created' });
+      resolveUserDeviceChallenges(user.id, socketIO, 'completed');
       const updated = await User.findById(user.id);
       return res.json({ message: 'Login successful', token, user: User.toPublicJSON(updated), isNewUser: false });
     }
@@ -752,6 +781,7 @@ exports.googleAuth = async (req, res) => {
       await User.updateStatus(byEmail.id, 'online');
       const socketIO = req.app?.get('io') || io;
       if (socketIO) socketIO.to(`user:${byEmail.id}`).emit('session:updated', { type: 'created' });
+      resolveUserDeviceChallenges(byEmail.id, socketIO, 'completed');
       const updated = await User.findById(byEmail.id);
       return res.json({ message: 'Login successful', token, user: User.toPublicJSON(updated), isNewUser: false, justLinked: true });
     }
@@ -912,6 +942,9 @@ exports.verifyLogin2FA = async (req, res) => {
 
     const socketIO = req.app?.get('io') || io;
     if (socketIO) socketIO.to(`user:${user.id}`).emit('session:updated', { type: 'created' });
+
+    // Login via 2FA email code succeeded; resolve/clear any lingering device prompt challenges for this user
+    resolveUserDeviceChallenges(user.id, socketIO, 'completed');
 
     res.json({
       message: 'Login successful',
@@ -1295,14 +1328,17 @@ exports.checkDevicePrompt = async (req, res) => {
     }
 
     if (challenge.status === 'approved') {
-      return res.json({
+      const responseData = {
         status: 'approved',
         token: challenge.token,
         user: challenge.user
-      });
+      };
+      deviceChallenges.delete(challengeId);
+      return res.json(responseData);
     }
 
     if (challenge.status === 'declined') {
+      deviceChallenges.delete(challengeId);
       return res.json({
         status: 'declined',
         error: 'Sign-in request was declined from your active device.'
@@ -1316,6 +1352,28 @@ exports.checkDevicePrompt = async (req, res) => {
   }
 };
 
+exports.cancelDevicePrompt = async (req, res) => {
+  try {
+    const { challengeId } = req.body;
+    if (challengeId && deviceChallenges.has(challengeId)) {
+      const challenge = deviceChallenges.get(challengeId);
+      challenge.status = 'cancelled';
+      deviceChallenges.delete(challengeId);
+      const socketIO = req.app?.get('io') || io;
+      if (socketIO && challenge.userId) {
+        socketIO.to(`user:${challenge.userId}`).emit('auth:device_prompt_resolved', {
+          challengeId,
+          status: 'cancelled'
+        });
+      }
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Cancel device prompt error:', error);
+    res.status(500).json({ error: 'Error cancelling device prompt' });
+  }
+};
+
 exports.getPendingDevicePrompts = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -1323,9 +1381,9 @@ exports.getPendingDevicePrompts = async (req, res) => {
     const activePrompts = [];
 
     for (const [challengeId, challenge] of deviceChallenges.entries()) {
-      if (challenge.userId === userId && challenge.status === 'pending') {
-        if (now > challenge.expiresAt) {
-          challenge.status = 'expired';
+      if (challenge.userId === userId) {
+        if (challenge.status !== 'pending' || now > challenge.expiresAt) {
+          deviceChallenges.delete(challengeId);
         } else {
           activePrompts.push({
             challengeId: challenge.id,

@@ -243,8 +243,12 @@ function initSocket() {
     }
   });
 
-  socket.on('auth:device_prompt_resolved', () => {
-    if (typeof checkPendingDevicePrompts === 'function') {
+  socket.on('auth:device_prompt_resolved', (data) => {
+    if (typeof onDevicePromptResolved === 'function') {
+      onDevicePromptResolved(data);
+    } else if (typeof window.onDevicePromptResolved === 'function') {
+      window.onDevicePromptResolved(data);
+    } else if (typeof checkPendingDevicePrompts === 'function') {
       checkPendingDevicePrompts();
     } else if (typeof window.checkPendingDevicePrompts === 'function') {
       window.checkPendingDevicePrompts();

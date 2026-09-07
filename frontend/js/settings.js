@@ -696,8 +696,30 @@ document.getElementById('twoFactorMasterToggle')?.addEventListener('click', asyn
 let activePromptCountdownTimer = null;
 let currentPromptChallengeId = null;
 
+function isSelfChallenge(challengeId) {
+  if (!challengeId) return false;
+  try {
+    if (
+      localStorage.getItem('synch_self_challenge_' + challengeId) ||
+      sessionStorage.getItem('synch_self_challenge_' + challengeId) ||
+      localStorage.getItem('synch_last_self_challenge') === challengeId
+    ) {
+      return true;
+    }
+    const recent = JSON.parse(localStorage.getItem('synch_recent_self_challenges') || '[]');
+    return Array.isArray(recent) && recent.some(r => r.id === challengeId);
+  } catch (e) {
+    return false;
+  }
+}
+
 function onDevicePromptReceived(data) {
   if (!data || !data.challengeId) return;
+  // NEVER show 2FA approval prompt on the device that initiated the sign-in request
+  if (isSelfChallenge(data.challengeId)) {
+    console.log('[2FA] Ignored self-initiated prompt on this device:', data.challengeId);
+    return;
+  }
   currentPromptChallengeId = data.challengeId;
 
   const deviceEl = document.getElementById('devicePromptDeviceName');
@@ -747,12 +769,31 @@ function onDevicePromptReceived(data) {
 
 window.onDevicePromptReceived = onDevicePromptReceived;
 
+function onDevicePromptResolved(data) {
+  if (!data || !data.challengeId || data.challengeId === currentPromptChallengeId) {
+    closeModal('deviceApprovalModal');
+    if (activePromptCountdownTimer) clearInterval(activePromptCountdownTimer);
+    currentPromptChallengeId = null;
+  }
+  checkPendingDevicePrompts();
+}
+window.onDevicePromptResolved = onDevicePromptResolved;
+
 async function checkPendingDevicePrompts() {
   if (!getToken()) return;
   try {
     const res = await fetchAPI('/api/auth/2fa/pending-prompts');
     if (res.prompts && res.prompts.length > 0) {
-      onDevicePromptReceived(res.prompts[0]);
+      const foreignPrompts = res.prompts.filter(p => p.challengeId && !isSelfChallenge(p.challengeId));
+      if (foreignPrompts.length > 0) {
+        onDevicePromptReceived(foreignPrompts[0]);
+      } else {
+        if (currentPromptChallengeId) {
+          closeModal('deviceApprovalModal');
+          if (activePromptCountdownTimer) clearInterval(activePromptCountdownTimer);
+          currentPromptChallengeId = null;
+        }
+      }
     } else {
       if (currentPromptChallengeId) {
         closeModal('deviceApprovalModal');
