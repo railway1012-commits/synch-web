@@ -89,11 +89,16 @@ module.exports = (io) => {
           return;
         }
 
-        // Broadcast directly to every participant's personal room (prevents duplicate delivery)
-        chat.participants.forEach(participant => {
-          io.to(`user:${participant._id}`).emit('message:new', messageJSON);
-          if (participant._id !== user.id) {
-            io.to(`user:${participant._id}`).emit('message:notification', {
+        // Broadcast directly to every participant's personal room (strictly deduplicated)
+        const seenPids = new Set();
+        (chat.participants || []).forEach(participant => {
+          const pid = participant._id || participant.id;
+          if (!pid || seenPids.has(pid)) return;
+          seenPids.add(pid);
+
+          io.to(`user:${pid}`).emit('message:new', messageJSON);
+          if (pid !== user.id) {
+            io.to(`user:${pid}`).emit('message:notification', {
               message: messageJSON,
               chat: {
                 _id: chat.id,

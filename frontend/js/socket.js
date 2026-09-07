@@ -7,7 +7,7 @@ function initSocket() {
   // Connect to the same origin as the page
   const serverUrl = window.location.origin;
 
-  if (socket && socket.connected) {
+  if (socket) {
     return socket;
   }
 
@@ -497,7 +497,7 @@ function hideMaintenanceOverlay() {
     overlay.style.display = 'none';
     try { overlay.remove(); } catch (e) {}
   }
-  if (typeof initSocket === 'function' && (!socket || !socket.connected)) {
+  if (typeof initSocket === 'function' && !socket) {
     initSocket();
   }
   if (typeof loadChats === 'function') {

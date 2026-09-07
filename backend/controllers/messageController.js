@@ -56,10 +56,15 @@ exports.sendMessage = async (req, res) => {
     const messageJSON = Message.toJSON(message);
 
     if (io) {
-      chat.participants.forEach(participant => {
-        io.to(`user:${participant._id}`).emit('message:new', messageJSON);
-        if (participant._id !== req.user.id) {
-          io.to(`user:${participant._id}`).emit('message:notification', {
+      const seenPids = new Set();
+      (chat.participants || []).forEach(participant => {
+        const pid = participant._id || participant.id;
+        if (!pid || seenPids.has(pid)) return;
+        seenPids.add(pid);
+
+        io.to(`user:${pid}`).emit('message:new', messageJSON);
+        if (pid !== req.user.id) {
+          io.to(`user:${pid}`).emit('message:notification', {
             message: messageJSON,
             chat: {
               _id: chat.id,

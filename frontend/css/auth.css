@@ -644,6 +644,19 @@
   100% { background-position: -200% 0; }
 }
 
+.google-btn-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 46px;
+  margin: 4px 0 0;
+}
+.google-btn-container > div {
+  display: flex !important;
+  justify-content: center !important;
+}
+
 .auth-alert {
   background: rgba(239, 68, 68, 0.12);
   border: 1px solid rgba(239, 68, 68, 0.35);

@@ -2806,7 +2806,21 @@ function onNewChat(data) {
   }
 }
 
+const processedMessageIds = new Set();
+
 function onNewMessage(message) {
+  if (!message || !message._id) return;
+
+  // Deduplicate: ignore if this message ID was already handled
+  if (processedMessageIds.has(message._id)) {
+    return;
+  }
+  processedMessageIds.add(message._id);
+  if (processedMessageIds.size > 2000) {
+    const oldest = processedMessageIds.values().next().value;
+    processedMessageIds.delete(oldest);
+  }
+
   const isCurrentChat = !!(currentChat && (parseInt(currentChat._id) === parseInt(message.chat) || currentChat._id === message.chat));
   const isSender = (message.sender?._id === currentUser._id || message.senderId === currentUser._id);
 
@@ -3506,7 +3520,12 @@ function onFriendRequestReceived(data) {
   const container = document.getElementById('friendReqToastContainer');
   if (!container) return;
 
-  const toastId = `freq-toast-${req._id || Date.now()}`;
+  const reqId = req?._id || req?.id;
+  const toastId = `freq-toast-${reqId || Date.now()}`;
+  
+  // Deduplicate: avoid popping up the same request multiple times
+  if (reqId && document.getElementById(toastId)) return;
+
   const toast = document.createElement('div');
   toast.className = 'freq-toast';
   toast.id = toastId;
@@ -3519,17 +3538,30 @@ function onFriendRequestReceived(data) {
       </div>
     </div>
     <div class="freq-toast-actions">
-      <button class="btn btn-secondary btn-sm" onclick="declineFriendReqFromToast('${req._id}', '${toastId}')">Decline</button>
-      <button class="btn btn-primary btn-sm" onclick="acceptFriendReqFromToast('${req._id}', '${toastId}')">Accept</button>
+      <button class="btn btn-secondary btn-sm" onclick="declineFriendReqFromToast('${reqId || req?._id}', '${toastId}')">Decline</button>
+      <button class="btn btn-primary btn-sm" onclick="acceptFriendReqFromToast('${reqId || req?._id}', '${toastId}')">Accept</button>
     </div>
   `;
   container.appendChild(toast);
+
+  // Auto-dismiss after 3 seconds (without declining)
+  setTimeout(() => {
+    dismissFreqToast(toastId);
+  }, 3000);
 
   const sound = new Audio('/assets/audio/notification.mp3');
   sound.play().catch(() => {});
 }
 
+const processedFriendAcceptKeys = new Set();
 function onFriendRequestAccepted(data) {
+  const reqKey = `${data.user?._id || data.user?.id || ''}_${data.chat?._id || ''}`;
+  if (reqKey && processedFriendAcceptKeys.has(reqKey)) return;
+  if (reqKey) {
+    processedFriendAcceptKeys.add(reqKey);
+    setTimeout(() => processedFriendAcceptKeys.delete(reqKey), 8000);
+  }
+
   updateFriendBadges();
   showToast(`@${data.user?.username || 'User'} accepted your friend request!`, 'success');
   loadChats();
