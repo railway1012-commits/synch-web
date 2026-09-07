@@ -225,10 +225,25 @@
     document.getElementById('callEndBtn')?.addEventListener('click', () => endCall('ended'));
     document.getElementById('callMuteBtn')?.addEventListener('click', toggleMute);
     document.getElementById('callVideoBtn')?.addEventListener('click', toggleVideo);
+    document.getElementById('callFlipCameraBtn')?.addEventListener('click', flipCamera);
     document.getElementById('callScreenShareBtn')?.addEventListener('click', toggleScreenShare);
     document.getElementById('callSpeakerBtn')?.addEventListener('click', toggleSpeaker);
     document.getElementById('callMinimizeBtn')?.addEventListener('click', toggleMinimize);
     document.getElementById('minimizedCallBadge')?.addEventListener('click', maximizeCall);
+    document.getElementById('localVideoPip')?.addEventListener('click', swapVideoFeeds);
+
+    const overlayEl = document.getElementById('audioCallOverlay');
+    if (overlayEl) {
+      overlayEl.addEventListener('mousemove', showCallControls);
+      overlayEl.addEventListener('click', showCallControls);
+      overlayEl.addEventListener('touchstart', showCallControls, { passive: true });
+    }
+    const dockEl = document.querySelector('.call-overlay-dock');
+    if (dockEl) {
+      dockEl.addEventListener('mouseenter', () => {
+        if (controlsHideTimeout) clearTimeout(controlsHideTimeout);
+      });
+    }
 
     document.getElementById('acceptIncomingCallBtn')?.addEventListener('click', acceptIncomingCall);
     document.getElementById('declineIncomingCallBtn')?.addEventListener('click', () => rejectIncomingCall('declined'));
@@ -804,8 +819,18 @@
     isVideoEnabled = false;
     isScreenSharing = false;
     isMinimized = false;
+    isFeedsSwapped = false;
+    currentFacingMode = 'user';
 
-    if (el.overlay) el.overlay.classList.remove('active', 'minimized', 'video-mode');
+    if (controlsHideTimeout) clearTimeout(controlsHideTimeout);
+    const label = document.getElementById('localPipLabel');
+    if (label) label.textContent = 'You';
+    const flipBtn = document.getElementById('callFlipCameraBtn');
+    if (flipBtn) flipBtn.style.display = 'none';
+    const headerPill = document.getElementById('callVideoHeaderPill');
+    if (headerPill) headerPill.style.display = 'none';
+
+    if (el.overlay) el.overlay.classList.remove('active', 'minimized', 'video-mode', 'controls-hidden');
     if (el.videoContainer) el.videoContainer.style.display = 'none';
     if (el.audioCenter) el.audioCenter.style.display = 'flex';
     if (el.minimizedBadge) el.minimizedBadge.style.display = 'none';
@@ -833,11 +858,30 @@
 
       if (el.timer) el.timer.textContent = formatted;
       if (el.minimizedTimer) el.minimizedTimer.textContent = formatted;
+      const videoTimer = document.getElementById('callVideoTimer');
+      if (videoTimer) videoTimer.textContent = formatted;
       updateCallBanner();
     }
 
     update();
     callTimerInterval = setInterval(update, 1000);
+  }
+
+  // --- Auto-Hide Inactive Call Controls in Video Mode ---
+  let controlsHideTimeout = null;
+  function showCallControls() {
+    if (!el.overlay) return;
+    el.overlay.classList.remove('controls-hidden');
+    if (controlsHideTimeout) clearTimeout(controlsHideTimeout);
+
+    const hasVideo = isVideoEnabled || activeCall?.hasRemoteVideo || isScreenSharing;
+    if (hasVideo && !isMinimized && callState === 'connected') {
+      controlsHideTimeout = setTimeout(() => {
+        if (el.overlay && el.overlay.classList.contains('video-mode')) {
+          el.overlay.classList.add('controls-hidden');
+        }
+      }, 5000);
+    }
   }
 
   // --- View Mode Adjustment (Audio vs Video) ---
@@ -852,6 +896,20 @@
     if (el.audioCenter) {
       el.audioCenter.style.display = hasVideo ? 'none' : 'flex';
     }
+
+    const headerPill = document.getElementById('callVideoHeaderPill');
+    if (headerPill) {
+      headerPill.style.display = hasVideo ? 'inline-flex' : 'none';
+      const nameEl = document.getElementById('callVideoUserName');
+      if (nameEl && activeCall) nameEl.textContent = activeCall.remoteUserName || 'User';
+    }
+
+    const flipBtn = document.getElementById('callFlipCameraBtn');
+    if (flipBtn) {
+      flipBtn.style.display = (hasVideo && isVideoEnabled) ? 'flex' : 'none';
+    }
+
+    showCallControls();
   }
 
   // --- Call Screen Controls ---
@@ -861,6 +919,10 @@
     if (el.name) el.name.textContent = call.remoteUserName;
     if (el.status) el.status.textContent = statusText || 'Calling...';
     if (el.timer) el.timer.textContent = '00:00';
+    const videoTimer = document.getElementById('callVideoTimer');
+    if (videoTimer) videoTimer.textContent = '00:00';
+    const videoUser = document.getElementById('callVideoUserName');
+    if (videoUser) videoUser.textContent = call.remoteUserName || 'User';
 
     if (el.avatar) {
       if (call.remoteUserAvatar) {
@@ -870,9 +932,10 @@
       }
     }
 
-    el.overlay.classList.remove('minimized');
+    el.overlay.classList.remove('minimized', 'controls-hidden');
     el.overlay.classList.add('active');
     if (el.minimizedBadge) el.minimizedBadge.style.display = 'none';
+    showCallControls();
   }
 
   function toggleMute() {
@@ -972,6 +1035,63 @@
     } catch (err) {
       console.error('Error toggling video:', err);
       if (typeof showToast === 'function') showToast('Camera access failed', 'error');
+    }
+  }
+
+  async function flipCamera() {
+    if (!peerConnection || !isVideoEnabled || !localStream) return;
+    try {
+      currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+      let newStream;
+      try {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: currentFacingMode }
+        });
+      } catch (e1) {
+        newStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
+
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      const oldTrack = localStream.getVideoTracks()[0];
+      if (oldTrack) {
+        oldTrack.stop();
+        localStream.removeTrack(oldTrack);
+      }
+      localStream.addTrack(newVideoTrack);
+
+      let sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+      if (sender) {
+        await sender.replaceTrack(newVideoTrack);
+      }
+
+      if (el.localVideo) {
+        el.localVideo.srcObject = localStream;
+        el.localVideo.style.transform = currentFacingMode === 'user' ? 'scaleX(-1)' : 'none';
+        el.localVideo.play().catch(() => {});
+      }
+
+      if (typeof showToast === 'function') {
+        showToast(currentFacingMode === 'user' ? 'Front camera active' : 'Rear camera active', 'info');
+      }
+    } catch (err) {
+      console.warn('Flip camera error:', err);
+      if (typeof showToast === 'function') showToast('Could not flip camera', 'warning');
+    }
+  }
+
+  function swapVideoFeeds() {
+    if (!el.localVideo || !el.remoteVideo || !activeCall) return;
+    isFeedsSwapped = !isFeedsSwapped;
+    if (isFeedsSwapped) {
+      el.remoteVideo.srcObject = localStream;
+      el.localVideo.srcObject = remoteVideoStreamObject;
+      const label = document.getElementById('localPipLabel');
+      if (label) label.textContent = activeCall?.remoteUserName || 'Partner';
+    } else {
+      el.remoteVideo.srcObject = remoteVideoStreamObject;
+      el.localVideo.srcObject = localStream;
+      const label = document.getElementById('localPipLabel');
+      if (label) label.textContent = 'You';
     }
   }
 

@@ -3123,12 +3123,16 @@ select:focus-visible {
 }
 
 .call-overlay-header {
+  position: relative;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  max-width: 600px;
+  max-width: 700px;
   margin: 0 auto;
+  pointer-events: auto;
+  transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .call-encryption-badge {
@@ -3297,13 +3301,17 @@ select:focus-visible {
 
 /* Call Overlay Dock Controls */
 .call-overlay-dock {
+  position: relative;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 28px;
+  gap: 20px;
   width: 100%;
-  max-width: 420px;
+  max-width: 540px;
   margin: 0 auto;
+  pointer-events: auto;
+  transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .call-dock-btn {
@@ -3800,6 +3808,7 @@ select:focus-visible {
    ======================================================== */
 .audio-call-overlay.video-mode {
   background: #000000;
+  padding: env(safe-area-inset-top, 20px) 20px env(safe-area-inset-bottom, 28px) 20px;
 }
 
 .call-video-container {
@@ -3828,14 +3837,33 @@ select:focus-visible {
   height: 220px;
   border-radius: var(--radius-lg, 16px);
   overflow: hidden;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.7), 0 0 0 2px rgba(255, 255, 255, 0.15);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8), 0 0 0 2px rgba(255, 255, 255, 0.2);
   background: #111;
-  z-index: 10;
-  transition: transform 0.2s ease;
+  z-index: 25;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
 }
 
 .local-video-pip:hover {
   transform: scale(1.04);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9), 0 0 0 2px var(--accent, #0084ff);
+}
+
+.local-pip-label {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 8px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: var(--radius-full, 9999px);
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  z-index: 2;
+  pointer-events: none;
+  letter-spacing: 0.3px;
 }
 
 .local-video-feed {
@@ -3845,12 +3873,152 @@ select:focus-visible {
   transform: scaleX(-1); /* Mirror local camera */
 }
 
+/* Video Mode Header Controls */
+.audio-call-overlay.video-mode .call-overlay-header {
+  position: relative;
+  z-index: 30;
+}
+
+.audio-call-overlay.video-mode .call-video-header-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  background: rgba(12, 14, 20, 0.82);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-full, 9999px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  font-size: 13px;
+  font-weight: 500;
+  color: #ffffff;
+  user-select: none;
+}
+
+.audio-call-overlay.video-mode .call-video-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+
+.audio-call-overlay.video-mode .call-video-divider {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.audio-call-overlay.video-mode .call-video-timer {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.audio-call-overlay.video-mode .call-encryption-badge {
+  background: rgba(12, 14, 20, 0.82);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.audio-call-overlay.video-mode .call-minimize-btn {
+  background: rgba(12, 14, 20, 0.82);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+}
+
+/* Video Mode Controls Dock (Modern Floating Glass Dock) */
+.audio-call-overlay.video-mode .call-overlay-dock {
+  background: rgba(10, 12, 18, 0.84);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-full, 9999px);
+  padding: 12px 28px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  max-width: 540px;
+  margin-bottom: 4px;
+}
+
+.audio-call-overlay.video-mode .call-dock-btn {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.audio-call-overlay.video-mode .call-dock-btn:hover {
+  color: #ffffff;
+}
+
+.audio-call-overlay.video-mode .call-dock-icon {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.audio-call-overlay.video-mode .call-dock-btn:hover .call-dock-icon {
+  background: rgba(255, 255, 255, 0.24);
+  transform: translateY(-2px);
+}
+
+.audio-call-overlay.video-mode .call-dock-btn.active .call-dock-icon {
+  background: var(--danger, #ef4444);
+  border-color: var(--danger, #ef4444);
+  color: #ffffff;
+}
+
+.audio-call-overlay.video-mode .call-end-dock-btn .call-dock-icon {
+  background: var(--danger, #ef4444);
+  border-color: var(--danger, #ef4444);
+  color: #ffffff;
+  box-shadow: 0 8px 25px rgba(239, 68, 68, 0.5);
+}
+
+.audio-call-overlay.video-mode .call-end-dock-btn:hover .call-dock-icon {
+  background: #dc2626;
+  transform: scale(1.06);
+}
+
+/* Auto-hide controls when user is inactive in video mode */
+.audio-call-overlay.video-mode.controls-hidden .call-overlay-header {
+  opacity: 0;
+  transform: translateY(-24px);
+  pointer-events: none;
+}
+
+.audio-call-overlay.video-mode.controls-hidden .call-overlay-dock {
+  opacity: 0;
+  transform: translateY(24px);
+  pointer-events: none;
+}
+
 @media (max-width: 768px) {
   .local-video-pip {
-    width: 100px;
-    height: 140px;
+    width: 105px;
+    height: 145px;
     bottom: 110px;
-    right: 16px;
+    right: 14px;
+    border-radius: var(--radius-md, 12px);
+  }
+  .call-overlay-dock {
+    gap: 10px;
+    padding: 10px 14px !important;
+    max-width: 96%;
+  }
+  .call-dock-icon {
+    width: 46px;
+    height: 46px;
+  }
+  .call-end-dock-btn .call-dock-icon {
+    width: 50px;
+    height: 50px;
+  }
+  .call-dock-btn span {
+    font-size: 11px;
   }
 }
 

@@ -7,9 +7,9 @@
   <title>SYNCH - Chat</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="css/main.css?v=60">
-  <link rel="stylesheet" href="css/chat.css?v=60">
-  <link rel="stylesheet" href="css/settings.css?v=60">
+  <link rel="stylesheet" href="css/main.css?v=65">
+  <link rel="stylesheet" href="css/chat.css?v=65">
+  <link rel="stylesheet" href="css/settings.css?v=65">
 </head>
 <body>
   <a href="#messagesContainer" class="skip-link">Skip to messages</a>
@@ -1620,6 +1620,15 @@
         </svg>
         <span id="callSecurityBadgeText">End-to-End Encrypted</span>
       </div>
+
+      <!-- In Video Mode: Remote User Name & Duration Pill in Header -->
+      <div class="call-video-header-pill" id="callVideoHeaderPill" style="display: none;">
+        <span class="call-video-status-dot"></span>
+        <span class="call-video-user-name" id="callVideoUserName">User</span>
+        <span class="call-video-divider">•</span>
+        <span class="call-video-timer" id="callVideoTimer">00:00</span>
+      </div>
+
       <button class="btn-icon call-minimize-btn" id="callMinimizeBtn" title="Minimize Call">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="4 14 10 14 10 20"/>
@@ -1633,7 +1642,8 @@
     <!-- Video Streams Container -->
     <div class="call-video-container" id="callVideoContainer" style="display: none;">
       <video id="remoteVideoStream" autoplay playsinline class="remote-video-feed"></video>
-      <div class="local-video-pip" id="localVideoPip">
+      <div class="local-video-pip" id="localVideoPip" title="Tap to switch camera view">
+        <span class="local-pip-label" id="localPipLabel">You</span>
         <video id="localVideoStream" autoplay playsinline muted class="local-video-feed"></video>
       </div>
     </div>
@@ -1686,6 +1696,18 @@
           </svg>
         </div>
         <span id="callVideoText">Camera</span>
+      </button>
+
+      <button class="call-dock-btn" id="callFlipCameraBtn" title="Switch Camera" style="display: none;">
+        <div class="call-dock-icon" id="callFlipCameraIcon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 7h-3a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2H8a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+            <circle cx="12" cy="13" r="3"/>
+            <path d="M17 2l2 2-2 2"/>
+            <path d="M7 22l-2-2 2-2"/>
+          </svg>
+        </div>
+        <span id="callFlipCameraText">Flip</span>
       </button>
 
       <button class="call-dock-btn" id="callScreenShareBtn" title="Share Screen">
@@ -1796,13 +1818,13 @@
 
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="js/ui.js?v=64"></script>
-  <script src="js/auth.js?v=64"></script>
-  <script src="js/socket.js?v=64"></script>
-  <script src="js/custom-dropdown.js?v=64"></script>
-  <script src="js/google-identity.js?v=64"></script>
-  <script src="js/webrtc-call.js?v=64"></script>
-  <script src="js/chat.js?v=64"></script>
+  <script src="js/ui.js?v=65"></script>
+  <script src="js/auth.js?v=65"></script>
+  <script src="js/socket.js?v=65"></script>
+  <script src="js/custom-dropdown.js?v=65"></script>
+  <script src="js/google-identity.js?v=65"></script>
+  <script src="js/webrtc-call.js?v=65"></script>
+  <script src="js/chat.js?v=65"></script>
 
 
 
