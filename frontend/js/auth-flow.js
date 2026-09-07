@@ -276,10 +276,10 @@
               method: 'POST',
               body: JSON.stringify({ credential, expectedEmail: flow.identifier })
             });
-            hideLoading();
-            completeAuth(res.token, res.user, true);
+            await hideLoading();
+            handleAuthSuccess(res, true);
           } catch (err) {
-            hideLoading();
+            await hideLoading();
             if (err.rawError === 'GOOGLE_EMAIL_MISMATCH') {
               renderGoogleMismatch();
             } else {
@@ -316,7 +316,7 @@
           body: JSON.stringify({ credential, expectedEmail: flow.identifier })
         });
         await hideLoading();
-        completeAuth(res.token, res.user, true);
+        handleAuthSuccess(res, true);
       } catch (err) {
         await hideLoading();
         if (err.rawError === 'GOOGLE_EMAIL_MISMATCH') {
@@ -348,10 +348,10 @@
           method: 'POST',
           body: JSON.stringify({ credential, expectedEmail: flow.identifier })
         });
-        hideLoading();
-        completeAuth(res.token, res.user, true);
+        await hideLoading();
+        handleAuthSuccess(res, true);
       } catch (err) {
-        hideLoading();
+        await hideLoading();
         if (err.rawError === 'GOOGLE_EMAIL_MISMATCH') {
           renderGoogleMismatch();
         } else {
@@ -977,16 +977,10 @@
         method: 'POST',
         body: JSON.stringify({ credential })
       });
-      hideLoading();
-
-      if (res.isNewUser) {
-        saveSession(res.token, res.user, true);
-        renderGooglePasswordOptional(res.googleProfile);
-      } else {
-        completeAuth(res.token, res.user, true);
-      }
+      await hideLoading();
+      handleAuthSuccess(res, true);
     } catch (err) {
-      hideLoading();
+      await hideLoading();
       renderError(err.message);
     }
   }
@@ -1117,13 +1111,42 @@
   }
 
   // ---------- Shared completion ----------
+  function handleAuthSuccess(res, remember = true) {
+    if (!res) {
+      renderError('Authentication failed. Please try again.');
+      return;
+    }
+
+    if (res.requires2FA) {
+      flow.identifier = res.email || flow.identifier;
+      if (res.defaultMethod === 'device' && res.challengeId) {
+        render2FADevicePrompt(res, remember);
+      } else {
+        render2FAEmailCode(res, remember);
+      }
+      return;
+    }
+
+    if (res.isNewUser) {
+      saveSession(res.token, res.user, remember);
+      renderGooglePasswordOptional(res.googleProfile);
+      return;
+    }
+
+    completeAuth(res.token, res.user, remember);
+  }
+
   function completeAuth(token, user, remember) {
+    if (!token || !user) {
+      renderError('Authentication failed. Please try again.');
+      return;
+    }
     saveSession(token, user, remember);
     if (user?.email?.toLowerCase() === 'noreply.synch@gmail.com') {
       window.location.href = '/admin.html';
       return;
     }
-    if (!user.profileComplete) {
+    if (!user?.profileComplete) {
       renderProfileSetup();
       return;
     }
