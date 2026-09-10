@@ -31,7 +31,10 @@ const auth = async (req, res, next) => {
           banned: true,
           reason: user.ban_reason || 'Your account has been suspended for violating our terms of service.',
           bannedAt: user.banned_at,
-          bannedUntil: user.banned_until
+          bannedUntil: user.banned_until,
+          userId: user.id,
+          username: user.username,
+          email: user.email
         });
       }
     }

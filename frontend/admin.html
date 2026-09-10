@@ -30,6 +30,7 @@
   <nav class="admin-nav-bar">
     <button class="admin-nav-item active" data-view="users">👥 Users & Forensics</button>
     <button class="admin-nav-item" data-view="reports">🚨 Reports Queue <span class="admin-tab-badge" id="navBadgeReports" style="display:none;">0</span></button>
+    <button class="admin-nav-item" data-view="appeals">⚖️ Ban Appeals <span class="admin-tab-badge" id="navBadgeAppeals" style="display:none;">0</span></button>
     <button class="admin-nav-item" data-view="media">🖼️ Media Vault</button>
     <button class="admin-nav-item" data-view="ip">🛡️ Security & IPs</button>
     <button class="admin-nav-item" data-view="words">🛑 Auto-Mod Rules</button>
@@ -392,6 +393,31 @@
 
       <div id="reportsContainer" class="reports-stream-grid">
         <div class="text-center p-4 w-100">Loading reports queue...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW: Ban Appeals (NEW) -->
+  <div class="admin-view" id="view-appeals" style="display: none;">
+    <div class="admin-subview-container">
+      <div class="d-flex justify-between align-center mb-4 flex-wrap gap-2">
+        <div>
+          <h2>⚖️ Ban Appeals Review Queue</h2>
+          <p style="color: var(--text-secondary); font-size: 13px;">Review and process reinstatement requests submitted by suspended users.</p>
+        </div>
+        <div class="d-flex gap-2">
+          <select id="selectAppealStatusFilter" class="form-select" style="max-width: 170px;">
+            <option value="pending">Pending Review</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="all">All Appeals</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" id="btnRefreshAppeals">Refresh Queue</button>
+        </div>
+      </div>
+
+      <div id="appealsContainer" class="reports-stream-grid">
+        <div class="text-center p-4 w-100">Loading appeals queue...</div>
       </div>
     </div>
   </div>
@@ -787,16 +813,16 @@
         </p>
         <div class="control-group">
           <label>Quick Preset Reasons</label>
-          <div class="preset-badges">
-            <button type="button" class="preset-badge" data-reason="Spam or automated bot activity">Spam / Bots</button>
-            <button type="button" class="preset-badge" data-reason="Harassment, hate speech or toxicity">Toxicity / Harassment</button>
-            <button type="button" class="preset-badge" data-reason="Violation of SYNCH Terms of Service">Terms Violation</button>
-            <button type="button" class="preset-badge" data-reason="Suspicious account activity / Compromised">Suspicious / Hacked</button>
+          <div class="preset-badges" style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <button type="button" class="preset-badge" data-reason="Your account has been suspended from SYNCH due to repeated spam, excessive unsolicited activity, or the use of automated tools that disrupt the experience for other users. This behavior violates our platform guidelines and is not permitted on SYNCH.">Spam / Bots</button>
+            <button type="button" class="preset-badge" data-reason="Your account has been suspended from SYNCH due to repeated harassment, abusive behavior, or targeted misconduct toward other users. SYNCH is committed to maintaining a respectful environment, and this type of behavior is not tolerated on the platform.">Toxicity / Harassment</button>
+            <button type="button" class="preset-badge" data-reason="Your account has been suspended from SYNCH due to a violation of the SYNCH Terms of Service. The activity associated with your account was found to be inconsistent with our platform rules and requirements, and continued violations may result in further enforcement action.">Terms Violation</button>
+            <button type="button" class="preset-badge" data-reason="Your account has been suspended from SYNCH because recent activity appears suspicious or indicates that the account may have been compromised. This action has been taken as a security precaution to protect your account and the SYNCH community while the activity is reviewed.">Suspicious / Hacked</button>
           </div>
         </div>
         <div class="control-group">
           <label>Ban Reason Description</label>
-          <input type="text" id="banReasonInput" class="form-input" placeholder="Enter reason shown to user" value="Violation of SYNCH Terms of Service">
+          <textarea id="banReasonInput" class="form-input" rows="4" placeholder="Enter reason shown to user" style="resize: vertical; min-height: 90px; line-height: 1.45;">Your account has been suspended from SYNCH due to a violation of the SYNCH Terms of Service. The activity associated with your account was found to be inconsistent with our platform rules and requirements, and continued violations may result in further enforcement action.</textarea>
         </div>
         <div class="control-group">
           <label>Duration</label>

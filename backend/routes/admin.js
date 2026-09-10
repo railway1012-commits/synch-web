@@ -108,7 +108,10 @@ router.delete('/badges/:badgeId', adminController.deleteCustomBadge);
 router.get('/webhooks', adminController.getWebhooks);
 router.post('/webhooks', adminController.createWebhook);
 router.delete('/webhooks/:webhookId', adminController.deleteWebhook);
-router.post('/webhooks/test', adminController.testWebhook);
+// 22. Ban Appeals Queue
+router.get('/appeals', adminController.getBanAppeals);
+router.post('/appeals/:appealId/approve', adminController.approveBanAppeal);
+router.post('/appeals/:appealId/reject', adminController.rejectBanAppeal);
 
 module.exports = router;
 

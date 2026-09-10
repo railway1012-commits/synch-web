@@ -180,6 +180,16 @@ async function apiRequest(endpoint, options = {}) {
   }
 }
 
+function escapeBanHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function showBanModal(banData) {
   const existing = document.getElementById('banModalOverlay');
   if (existing) existing.remove();
@@ -192,6 +202,15 @@ function showBanModal(banData) {
   const expiration = banData?.bannedUntil 
     ? `Temporary Suspension — Expires: ${new Date(banData.bannedUntil).toLocaleString()}`
     : 'Permanent Account Suspension';
+
+  const currentUserId = banData?.userId || (function() {
+    try {
+      const u = JSON.parse(localStorage.getItem('synch_user') || sessionStorage.getItem('synch_user') || '{}');
+      return u?.id || null;
+    } catch (e) {
+      return null;
+    }
+  })();
 
   overlay.innerHTML = `
     <div class="ban-modal-card">
@@ -206,10 +225,48 @@ function showBanModal(banData) {
       <p class="ban-modal-desc">Your access to SYNCH has been revoked due to a policy violation.</p>
       <div class="ban-reason-box">
         <div class="ban-reason-label">Reason for Suspension</div>
-        <div class="ban-reason-text">${reason}</div>
-        <div class="ban-expiry-text">${expiration}</div>
+        <div class="ban-reason-text">${escapeBanHtml(reason)}</div>
+        <div class="ban-expiry-text">${escapeBanHtml(expiration)}</div>
       </div>
-      <button type="button" class="btn btn-danger btn-block" id="banModalOkBtn" style="padding: 12px; font-weight: 700;">OK & Log Out</button>
+
+      <div class="ban-modal-footer">
+        <!-- Mistake prompt & Appeal button (on top of logout button) -->
+        <div id="banAppealPromptSection" class="ban-appeal-section">
+          <div class="ban-mistake-label">We made a mistake?</div>
+          <button type="button" class="btn ban-appeal-btn" id="banModalAppealBtn">Appeal</button>
+        </div>
+
+        <!-- In-Modal Appeal Submission Form (hidden by default) -->
+        <div id="banAppealForm" class="ban-appeal-form" style="display: none;">
+          <div class="ban-appeal-form-header">
+            <span class="ban-appeal-title">Submit Ban Appeal</span>
+            <span class="ban-appeal-char-count" id="banAppealCharCount">0/10 min</span>
+          </div>
+          <textarea 
+            id="banAppealInput" 
+            class="ban-appeal-textarea" 
+            placeholder="Explain why you believe this suspension was a mistake and why your account should be reinstated (min 10 characters)..." 
+            rows="4"
+          ></textarea>
+          <div id="banAppealError" class="ban-appeal-error" style="display: none;"></div>
+          <div class="ban-appeal-actions">
+            <button type="button" class="btn ban-appeal-cancel-btn" id="banModalCancelAppealBtn">Cancel</button>
+            <button type="button" class="btn ban-appeal-submit-btn" id="banModalSubmitAppealBtn">Submit Appeal</button>
+          </div>
+        </div>
+
+        <!-- Existing or Submitted Appeal Status Banner -->
+        <div id="banAppealStatusBanner" class="ban-appeal-status-banner" style="display: none;">
+          <div class="ban-appeal-status-icon" id="banAppealStatusIcon">⏳</div>
+          <div class="ban-appeal-status-content">
+            <div class="ban-appeal-status-title" id="banAppealStatusTitle">Appeal Under Review</div>
+            <div class="ban-appeal-status-desc" id="banAppealStatusDesc">Your appeal is currently pending review by our moderation team.</div>
+          </div>
+        </div>
+
+        <!-- Log Out Button (underneath Appeal) -->
+        <button type="button" class="btn btn-danger ban-logout-btn" id="banModalOkBtn">Log Out</button>
+      </div>
     </div>
   `;
 
@@ -223,9 +280,160 @@ function showBanModal(banData) {
 
   const okBtn = document.getElementById('banModalOkBtn');
   if (okBtn) okBtn.addEventListener('click', dismissAndLogout);
+
   overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) dismissAndLogout();
+    const appealInput = document.getElementById('banAppealInput');
+    const formVisible = document.getElementById('banAppealForm')?.style.display !== 'none';
+    if (e.target === overlay) {
+      if (formVisible && appealInput && appealInput.value.trim().length > 0) {
+        if (!confirm('You have unsaved appeal text. Are you sure you want to exit and log out?')) return;
+      }
+      dismissAndLogout();
+    }
   });
+
+  const promptSection = document.getElementById('banAppealPromptSection');
+  const appealBtn = document.getElementById('banModalAppealBtn');
+  const appealForm = document.getElementById('banAppealForm');
+  const appealInput = document.getElementById('banAppealInput');
+  const appealError = document.getElementById('banAppealError');
+  const appealCharCount = document.getElementById('banAppealCharCount');
+  const cancelAppealBtn = document.getElementById('banModalCancelAppealBtn');
+  const submitAppealBtn = document.getElementById('banModalSubmitAppealBtn');
+  const statusBanner = document.getElementById('banAppealStatusBanner');
+  const statusIcon = document.getElementById('banAppealStatusIcon');
+  const statusTitle = document.getElementById('banAppealStatusTitle');
+  const statusDesc = document.getElementById('banAppealStatusDesc');
+
+  function renderStatusBanner(status, createdAt, adminNotes) {
+    if (!statusBanner) return;
+    statusBanner.className = 'ban-appeal-status-banner';
+    if (status === 'pending') {
+      statusBanner.classList.add('status-pending');
+      statusIcon.textContent = '⏳';
+      statusTitle.textContent = 'Appeal Under Review';
+      statusDesc.textContent = `Your appeal submitted on ${new Date(createdAt || Date.now()).toLocaleDateString()} is pending review by our moderation team.`;
+      if (promptSection) promptSection.style.display = 'none';
+      if (appealForm) appealForm.style.display = 'none';
+      statusBanner.style.display = 'flex';
+    } else if (status === 'rejected') {
+      statusBanner.classList.add('status-rejected');
+      statusIcon.textContent = '✕';
+      statusTitle.textContent = 'Appeal Rejected';
+      statusDesc.textContent = adminNotes ? `Moderator note: ${adminNotes}` : 'Your ban appeal was reviewed and rejected by the moderation team.';
+      if (promptSection) promptSection.style.display = 'none';
+      if (appealForm) appealForm.style.display = 'none';
+      statusBanner.style.display = 'flex';
+    } else if (status === 'approved') {
+      statusBanner.classList.add('status-approved');
+      statusIcon.textContent = '✓';
+      statusTitle.textContent = 'Appeal Approved!';
+      statusDesc.textContent = 'Your suspension has been lifted! You may now log in to your account.';
+      if (promptSection) promptSection.style.display = 'none';
+      if (appealForm) appealForm.style.display = 'none';
+      statusBanner.style.display = 'flex';
+      if (okBtn) okBtn.textContent = 'Proceed to Login';
+    }
+  }
+
+  // Check if there is an existing appeal for this user
+  if (currentUserId) {
+    fetch(`/api/auth/appeal-status?userId=${encodeURIComponent(currentUserId)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.appeal) {
+          renderStatusBanner(data.appeal.status, data.appeal.created_at, data.appeal.admin_notes);
+        }
+      })
+      .catch(err => {
+        console.warn('Failed to fetch appeal status:', err);
+      });
+  }
+
+  if (appealBtn) {
+    appealBtn.addEventListener('click', () => {
+      if (promptSection) promptSection.style.display = 'none';
+      if (appealForm) {
+        appealForm.style.display = 'block';
+        if (appealInput) appealInput.focus();
+      }
+    });
+  }
+
+  if (cancelAppealBtn) {
+    cancelAppealBtn.addEventListener('click', () => {
+      if (appealForm) appealForm.style.display = 'none';
+      if (promptSection) promptSection.style.display = 'flex';
+      if (appealError) {
+        appealError.style.display = 'none';
+        appealError.textContent = '';
+      }
+    });
+  }
+
+  if (appealInput) {
+    appealInput.addEventListener('input', () => {
+      const len = appealInput.value.trim().length;
+      if (appealCharCount) {
+        appealCharCount.textContent = len >= 10 ? `${len} chars` : `${len}/10 min`;
+        appealCharCount.style.color = len >= 10 ? '#10b981' : '#64748b';
+      }
+      if (appealError && len >= 10) {
+        appealError.style.display = 'none';
+      }
+    });
+  }
+
+  if (submitAppealBtn) {
+    submitAppealBtn.addEventListener('click', async () => {
+      const text = (appealInput?.value || '').trim();
+      if (!text || text.length < 10) {
+        if (appealError) {
+          appealError.textContent = 'Please enter at least 10 characters explaining your situation.';
+          appealError.style.display = 'block';
+        }
+        if (appealInput) appealInput.focus();
+        return;
+      }
+
+      if (!currentUserId) {
+        if (appealError) {
+          appealError.textContent = 'Unable to identify account. Please log in again.';
+          appealError.style.display = 'block';
+        }
+        return;
+      }
+
+      submitAppealBtn.disabled = true;
+      submitAppealBtn.textContent = 'Submitting...';
+      if (appealError) appealError.style.display = 'none';
+
+      try {
+        const resp = await fetch('/api/auth/appeal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUserId,
+            appealText: text
+          })
+        });
+
+        const result = await resp.json();
+        if (!resp.ok) {
+          throw new Error(result.error || 'Failed to submit appeal. Please try again.');
+        }
+
+        renderStatusBanner('pending', new Date(), null);
+      } catch (err) {
+        if (appealError) {
+          appealError.textContent = err.message || 'Failed to submit appeal. Please try again.';
+          appealError.style.display = 'block';
+        }
+        submitAppealBtn.disabled = false;
+        submitAppealBtn.textContent = 'Submit Appeal';
+      }
+    });
+  }
 }
 
 function logout() {

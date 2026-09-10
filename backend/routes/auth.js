@@ -23,6 +23,8 @@ router.post('/google', authLimiter, authController.googleAuth);
 router.post('/forgot-password', emailSendLimiter, authController.forgotPassword);
 router.post('/verify-reset-code', authLimiter, authController.verifyResetCode);
 router.post('/reset-password', authLimiter, authController.resetPassword);
+router.post('/appeal', checkLimiter, authController.submitBanAppeal);
+router.get('/appeal-status', checkLimiter, authController.getBanAppealStatus);
 
 // 2FA Endpoints (Public & Authenticated)
 router.post('/2fa/send-device-prompt', checkLimiter, authController.sendDevicePrompt);

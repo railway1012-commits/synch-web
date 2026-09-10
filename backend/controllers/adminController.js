@@ -605,6 +605,7 @@ exports.banUser = async (req, res) => {
     // 3. Emit real-time live ban event to user's connected sockets
     if (io) {
       io.to(`user:${userId}`).emit('user_banned', {
+        userId: userId,
         reason: banReason,
         bannedAt: new Date().toISOString(),
         bannedUntil: bannedUntil ? bannedUntil.toISOString() : null
@@ -1590,4 +1591,102 @@ async function logAdminAction(adminId, adminUsername, action, targetType, target
     console.error('Audit log error:', err);
   }
 }
+
+// 41. Ban Appeals Management
+exports.getBanAppeals = async (req, res) => {
+  try {
+    const status = req.query.status || 'pending';
+    const limit = parseInt(req.query.limit, 10) || 50;
+    const offset = parseInt(req.query.offset, 10) || 0;
+    const { BanAppeal } = require('../database');
+    const data = await BanAppeal.find(status, limit, offset);
+    res.json(data);
+  } catch (error) {
+    console.error('Admin getBanAppeals error:', error);
+    res.status(500).json({ error: 'Failed to load ban appeals' });
+  }
+};
+
+exports.approveBanAppeal = async (req, res) => {
+  try {
+    const appealId = parseInt(req.params.appealId, 10);
+    const { notes } = req.body || {};
+    const { BanAppeal } = require('../database');
+
+    const appealRes = await pool.query('SELECT * FROM ban_appeals WHERE id = $1', [appealId]);
+    const appeal = appealRes.rows[0];
+    if (!appeal) {
+      return res.status(404).json({ error: 'Appeal not found' });
+    }
+
+    // 1. Unban the user
+    await pool.query(
+      `UPDATE users 
+       SET is_banned = FALSE, ban_reason = NULL, banned_at = NULL, banned_until = NULL, banned_by = NULL 
+       WHERE id = $1`,
+      [appeal.user_id]
+    );
+
+    // 2. Mark appeal as approved
+    const updated = await BanAppeal.approve(appealId, req.user.id, notes);
+
+    // 3. Emit live unban socket event
+    if (io) {
+      io.to(`user:${appeal.user_id}`).emit('user_unbanned', { userId: appeal.user_id });
+      io.to(`user:${appeal.user_id}`).emit('appeal_decision', { appealId, status: 'approved' });
+    }
+
+    await logAdminAction(req.user.id, req.user.username, 'APPROVE_BAN_APPEAL', 'APPEAL', appealId, {
+      userId: appeal.user_id,
+      username: appeal.username,
+      notes
+    });
+
+    res.json({
+      success: true,
+      message: `Appeal approved and User #${appeal.user_id} (${appeal.username}) has been unbanned.`,
+      appeal: updated
+    });
+  } catch (error) {
+    console.error('Admin approveBanAppeal error:', error);
+    res.status(500).json({ error: 'Failed to approve appeal' });
+  }
+};
+
+exports.rejectBanAppeal = async (req, res) => {
+  try {
+    const appealId = parseInt(req.params.appealId, 10);
+    const { notes } = req.body || {};
+    const { BanAppeal } = require('../database');
+
+    const appealRes = await pool.query('SELECT * FROM ban_appeals WHERE id = $1', [appealId]);
+    const appeal = appealRes.rows[0];
+    if (!appeal) {
+      return res.status(404).json({ error: 'Appeal not found' });
+    }
+
+    // Mark appeal as rejected
+    const updated = await BanAppeal.reject(appealId, req.user.id, notes);
+
+    if (io) {
+      io.to(`user:${appeal.user_id}`).emit('appeal_decision', { appealId, status: 'rejected' });
+    }
+
+    await logAdminAction(req.user.id, req.user.username, 'REJECT_BAN_APPEAL', 'APPEAL', appealId, {
+      userId: appeal.user_id,
+      username: appeal.username,
+      notes
+    });
+
+    res.json({
+      success: true,
+      message: `Appeal rejected.`,
+      appeal: updated
+    });
+  } catch (error) {
+    console.error('Admin rejectBanAppeal error:', error);
+    res.status(500).json({ error: 'Failed to reject appeal' });
+  }
+};
+
 

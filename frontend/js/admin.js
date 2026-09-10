@@ -65,6 +65,16 @@
     return res.json();
   }
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   // View Navigation
   const navItems = document.querySelectorAll('.admin-nav-item');
   navItems.forEach(item => {
@@ -80,6 +90,7 @@
       if (targetView) targetView.style.display = 'block';
 
       if (view === 'reports') loadReports();
+      if (view === 'appeals') loadBanAppeals();
       if (view === 'badges') loadCustomBadges();
       if (view === 'webhooks') loadWebhooks();
       if (view === 'health') loadSystemHealth();
@@ -1333,6 +1344,122 @@
 
   document.getElementById('selectReportStatusFilter')?.addEventListener('change', loadReports);
   document.getElementById('btnRefreshReports')?.addEventListener('click', loadReports);
+
+  // 5b. Ban Appeals Review Queue
+  async function loadBanAppeals() {
+    const container = document.getElementById('appealsContainer');
+    const badge = document.getElementById('navBadgeAppeals');
+    if (!container) return;
+    const status = document.getElementById('selectAppealStatusFilter')?.value || 'pending';
+
+    try {
+      const data = await api(`/api/admin/appeals?status=${status}`);
+      if (badge) {
+        if (data.pendingCount > 0) {
+          badge.textContent = data.pendingCount;
+          badge.style.display = 'inline-block';
+        } else {
+          badge.style.display = 'none';
+        }
+      }
+
+      if (!data.appeals || !data.appeals.length) {
+        container.innerHTML = '<div class="text-center p-4 w-100" style="color: var(--text-secondary);">No ban appeals currently in this queue.</div>';
+        return;
+      }
+
+      container.innerHTML = data.appeals.map(a => `
+        <div class="report-card ${a.status}">
+          <div class="report-header">
+            <div>
+              <span class="report-user-badge">User: @${escapeHtml(a.username || 'User #' + a.user_id)} (#${a.user_id})</span>
+              ${a.email ? `<span style="font-size: 11px; color: var(--text-muted); margin-left: 8px;">(${escapeHtml(a.email)})</span>` : ''}
+            </div>
+            <span class="report-reason-pill" style="background: ${a.status === 'pending' ? 'rgba(245, 158, 11, 0.15)' : a.status === 'approved' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)'}; color: ${a.status === 'pending' ? '#f59e0b' : a.status === 'approved' ? '#10b981' : '#ef4444'};">
+              ${a.status.toUpperCase()}
+            </span>
+          </div>
+
+          <div style="margin-bottom: 8px;">
+            <div style="font-size: 11px; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px;">Original Ban Reason:</div>
+            <div style="font-size: 12.5px; color: var(--text-secondary); background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 8px; border-left: 3px solid #ef4444;">
+              ${escapeHtml(a.ban_reason || 'Terms of Service Violation')}
+            </div>
+          </div>
+
+          <div class="report-evidence-box" style="margin-bottom: 12px;">
+            <div style="font-size: 11px; font-weight: 700; color: #60a5fa; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">User Appeal Statement:</div>
+            <div style="font-weight: 500; font-size: 13px; color: #ffffff; white-space: pre-wrap; line-height: 1.45;">"${escapeHtml(a.appeal_text)}"</div>
+          </div>
+
+          ${a.admin_notes ? `
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+              <strong>Admin Notes:</strong> ${escapeHtml(a.admin_notes)} ${a.reviewer_username ? `(by @${escapeHtml(a.reviewer_username)})` : ''}
+            </div>
+          ` : ''}
+
+          <div class="report-actions-row">
+            <span style="font-size: 11px; color: var(--text-muted); align-self: center; margin-right: auto;">
+              Submitted: ${new Date(a.created_at).toLocaleString()}
+              ${a.reviewed_at ? ` • Reviewed: ${new Date(a.reviewed_at).toLocaleString()}` : ''}
+            </span>
+            ${a.status === 'pending' ? `
+              <button class="btn btn-secondary btn-sm reject-appeal-btn" data-id="${a.id}" data-user="${escapeHtml(a.username || a.user_id)}">Reject Appeal</button>
+              <button class="btn btn-success btn-sm approve-appeal-btn" data-id="${a.id}" data-user="${escapeHtml(a.username || a.user_id)}">✓ Approve & Unban</button>
+            ` : `
+              <span style="font-size: 12px; font-weight: 600; color: ${a.status === 'approved' ? '#10b981' : '#ef4444'};">
+                ${a.status === 'approved' ? '✓ Unbanned & Approved' : '✕ Appeal Rejected'}
+              </span>
+            `}
+          </div>
+        </div>
+      `).join('');
+
+      container.querySelectorAll('.approve-appeal-btn').forEach(b => {
+        b.addEventListener('click', async (e) => {
+          const aId = e.currentTarget.getAttribute('data-id');
+          const userLabel = e.currentTarget.getAttribute('data-user');
+          if (!confirm(`Approve appeal and restore full access for ${userLabel}? This will immediately unban the user.`)) return;
+          const notes = prompt('Enter optional approval note for the audit log:', 'Appeal accepted by admin');
+          try {
+            await api(`/api/admin/appeals/${aId}/approve`, {
+              method: 'POST',
+              body: JSON.stringify({ notes })
+            });
+            showToast(`User ${userLabel} unbanned & appeal approved live!`, 'success');
+            loadBanAppeals();
+            loadDashboard(true);
+          } catch (err) {
+            showToast('Error approving appeal: ' + err.message, 'error');
+          }
+        });
+      });
+
+      container.querySelectorAll('.reject-appeal-btn').forEach(b => {
+        b.addEventListener('click', async (e) => {
+          const aId = e.currentTarget.getAttribute('data-id');
+          const userLabel = e.currentTarget.getAttribute('data-user');
+          if (!confirm(`Reject appeal for ${userLabel}? The user will remain banned.`)) return;
+          const notes = prompt('Enter reason / note for rejection:', 'Appeal denied upon review');
+          try {
+            await api(`/api/admin/appeals/${aId}/reject`, {
+              method: 'POST',
+              body: JSON.stringify({ notes })
+            });
+            showToast(`Appeal for ${userLabel} was rejected.`, 'info');
+            loadBanAppeals();
+          } catch (err) {
+            showToast('Error rejecting appeal: ' + err.message, 'error');
+          }
+        });
+      });
+    } catch (err) {
+      console.error('Error loading ban appeals:', err);
+    }
+  }
+
+  document.getElementById('selectAppealStatusFilter')?.addEventListener('change', loadBanAppeals);
+  document.getElementById('btnRefreshAppeals')?.addEventListener('click', loadBanAppeals);
 
   // 6. Custom Badges Manager
   async function loadCustomBadges() {

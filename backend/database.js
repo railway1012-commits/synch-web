@@ -253,6 +253,23 @@ async function initDatabase() {
       );
       CREATE INDEX IF NOT EXISTS idx_user_ip_history_user ON user_ip_history(user_id);
       CREATE INDEX IF NOT EXISTS idx_user_ip_history_ip ON user_ip_history(ip);
+
+      CREATE TABLE IF NOT EXISTS ban_appeals (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        username TEXT,
+        email TEXT,
+        ban_reason TEXT,
+        appeal_text TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        admin_notes TEXT,
+        reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_ban_appeals_user ON ban_appeals(user_id);
+      CREATE INDEX IF NOT EXISTS idx_ban_appeals_status ON ban_appeals(status);
     `);
 
     // Safe column migrations
@@ -1534,6 +1551,70 @@ const IpBlacklist = {
   }
 };
 
+const BanAppeal = {
+  create: async ({ userId, username, email, banReason, appealText }) => {
+    const result = await pool.query(
+      `INSERT INTO ban_appeals (user_id, username, email, ban_reason, appeal_text, status)
+       VALUES ($1, $2, $3, $4, $5, 'pending') RETURNING *`,
+      [userId, username, email, banReason, appealText]
+    );
+    return result.rows[0];
+  },
+
+  findLatestByUser: async (userId) => {
+    const result = await pool.query(
+      `SELECT * FROM ban_appeals WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [userId]
+    );
+    return result.rows[0] || null;
+  },
+
+  find: async (status = 'pending', limit = 50, offset = 0) => {
+    let query = `
+      SELECT a.*, 
+             u.avatar as user_avatar, 
+             u.is_banned as current_banned, 
+             u.banned_until as current_banned_until,
+             m.username as reviewer_username
+      FROM ban_appeals a
+      LEFT JOIN users u ON a.user_id = u.id
+      LEFT JOIN users m ON a.reviewed_by = m.id
+    `;
+    const params = [];
+    if (status && status !== 'all') {
+      params.push(status);
+      query += ` WHERE a.status = $1`;
+    }
+    query += ` ORDER BY a.created_at DESC`;
+    params.push(limit, offset);
+    query += ` LIMIT $${params.length - 1} OFFSET $${params.length}`;
+
+    const result = await pool.query(query, params);
+    const countRes = await pool.query("SELECT COUNT(*) FROM ban_appeals WHERE status = 'pending'");
+    return { appeals: result.rows, pendingCount: parseInt(countRes.rows[0]?.count || 0) };
+  },
+
+  approve: async (appealId, reviewedBy, adminNotes) => {
+    const res = await pool.query(
+      `UPDATE ban_appeals 
+       SET status = 'approved', reviewed_by = $1, admin_notes = $2, reviewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3 RETURNING *`,
+      [reviewedBy, adminNotes || 'Appeal approved by administrator', appealId]
+    );
+    return res.rows[0];
+  },
+
+  reject: async (appealId, reviewedBy, adminNotes) => {
+    const res = await pool.query(
+      `UPDATE ban_appeals 
+       SET status = 'rejected', reviewed_by = $1, admin_notes = $2, reviewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3 RETURNING *`,
+      [reviewedBy, adminNotes || 'Appeal rejected by administrator', appealId]
+    );
+    return res.rows[0];
+  }
+};
+
 module.exports = {
   pool,
   initDatabase,
@@ -1549,6 +1630,7 @@ module.exports = {
   Badge,
   Webhook,
   IpHistory,
-  IpBlacklist
+  IpBlacklist,
+  BanAppeal
 };
 

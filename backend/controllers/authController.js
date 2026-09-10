@@ -73,7 +73,10 @@ exports.checkIdentifier = async (req, res) => {
           banned: true,
           reason: user.ban_reason || 'Your account has been suspended for violating our terms of service.',
           bannedAt: user.banned_at,
-          bannedUntil: user.banned_until
+          bannedUntil: user.banned_until,
+          userId: user.id,
+          username: user.username,
+          email: user.email
         });
       }
     }
@@ -470,7 +473,10 @@ exports.login = async (req, res) => {
           banned: true,
           reason: user.ban_reason || 'Your account has been suspended for violating our terms of service.',
           bannedAt: user.banned_at,
-          bannedUntil: user.banned_until
+          bannedUntil: user.banned_until,
+          userId: user.id,
+          username: user.username,
+          email: user.email
         });
       }
     }
@@ -625,7 +631,10 @@ exports.googleAuth = async (req, res) => {
             banned: true,
             reason: user.ban_reason || 'Your account has been suspended for violating our terms of service.',
             bannedAt: user.banned_at,
-            bannedUntil: user.banned_until
+            bannedUntil: user.banned_until,
+            userId: user.id,
+            username: user.username,
+            email: user.email
           });
         }
       }
@@ -710,7 +719,10 @@ exports.googleAuth = async (req, res) => {
             banned: true,
             reason: byEmail.ban_reason || 'Your account has been suspended for violating our terms of service.',
             bannedAt: byEmail.banned_at,
-            bannedUntil: byEmail.banned_until
+            bannedUntil: byEmail.banned_until,
+            userId: byEmail.id,
+            username: byEmail.username,
+            email: byEmail.email
           });
         }
       }
@@ -1490,5 +1502,73 @@ exports.send2FAEmailCode = async (req, res) => {
     res.status(500).json({ error: 'Error sending verification code' });
   }
 };
+
+exports.submitBanAppeal = async (req, res) => {
+  try {
+    const { userId, appealText } = req.body;
+    const cleanText = (appealText || '').trim();
+    if (!userId || !cleanText) {
+      return res.status(400).json({ error: 'User identifier and appeal statement are required.' });
+    }
+
+    if (cleanText.length < 10) {
+      return res.status(400).json({ error: 'Please provide a more detailed appeal statement (minimum 10 characters).' });
+    }
+
+    const { pool, BanAppeal } = require('../database');
+    const userRes = await pool.query('SELECT id, username, email, is_banned, ban_reason FROM users WHERE id = $1', [userId]);
+    const user = userRes.rows[0];
+
+    if (!user) {
+      return res.status(404).json({ error: 'Account not found.' });
+    }
+
+    if (!user.is_banned) {
+      return res.status(400).json({ error: 'This account is not currently suspended.' });
+    }
+
+    // Check if there is already a pending appeal
+    const existing = await pool.query(
+      "SELECT id FROM ban_appeals WHERE user_id = $1 AND status = 'pending'",
+      [userId]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: 'You already have an appeal under review. Please await moderator decision.' });
+    }
+
+    const appeal = await BanAppeal.create({
+      userId: user.id,
+      username: user.username,
+      email: user.email,
+      banReason: user.ban_reason || 'Terms of Service Violation',
+      appealText: cleanText
+    });
+
+    res.json({
+      success: true,
+      message: 'Your appeal has been submitted successfully and is pending review by our moderation team.',
+      appeal
+    });
+  } catch (error) {
+    console.error('submitBanAppeal error:', error);
+    res.status(500).json({ error: 'Failed to submit appeal. Please try again.' });
+  }
+};
+
+exports.getBanAppealStatus = async (req, res) => {
+  try {
+    const userId = parseInt(req.query.userId, 10);
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID required' });
+    }
+    const { BanAppeal } = require('../database');
+    const latest = await BanAppeal.findLatestByUser(userId);
+    res.json({ appeal: latest });
+  } catch (error) {
+    console.error('getBanAppealStatus error:', error);
+    res.status(500).json({ error: 'Failed to retrieve appeal status' });
+  }
+};
+
 
 
