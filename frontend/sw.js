@@ -1,4 +1,4 @@
-const CACHE_NAME = 'synch-v14';
+const CACHE_NAME = 'synch-v17';
 const STATIC_ASSETS = [
   '/',
   '/chat.html',
