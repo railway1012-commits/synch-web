@@ -1,5 +1,7 @@
 let socket = null;
 let reconnectAttempts = 0;
+const maxReconnectAttempts = 15;
+let currentJoinedChatId = null;
 
 function initSocket() {
   const token = (typeof getToken === 'function') ? getToken() : (sessionStorage.getItem('synch_token') || localStorage.getItem('synch_token'));
@@ -24,6 +26,11 @@ function initSocket() {
   socket.on('connect', () => {
     console.log('Connected to SYNCH server');
     reconnectAttempts = 0;
+
+    // Immediately recover active chat room subscription upon reconnect
+    if (currentJoinedChatId) {
+      socket.emit('chat:join', currentJoinedChatId);
+    }
 
     if (typeof onSocketConnected === 'function') {
       onSocketConnected();
@@ -398,18 +405,31 @@ function markMessagesAsRead(messageIds, chatId) {
 }
 
 function joinChat(chatId) {
+  currentJoinedChatId = chatId;
   if (socket && socket.connected) {
     socket.emit('chat:join', chatId);
   }
 }
 
 function leaveChat(chatId) {
+  if (currentJoinedChatId === chatId) {
+    currentJoinedChatId = null;
+  }
   if (socket && socket.connected) {
     socket.emit('chat:leave', chatId);
   }
 }
 
+function ensureSocketConnected() {
+  if (!socket) {
+    initSocket();
+  } else if (!socket.connected) {
+    socket.connect();
+  }
+}
+
 function disconnectSocket() {
+  currentJoinedChatId = null;
   if (socket) {
     socket.disconnect();
     socket = null;

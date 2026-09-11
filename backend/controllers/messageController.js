@@ -56,21 +56,30 @@ exports.sendMessage = async (req, res) => {
     const messageJSON = Message.toJSON(message);
 
     if (io) {
+      const chatIdNum = parseInt(chat.id);
+      // 1. Broadcast directly to chat room for instant live delivery
+      io.to(`chat:${chatIdNum}`).emit('message:new', messageJSON);
+      io.to(`chat:${String(chatIdNum)}`).emit('message:new', messageJSON);
+
+      // 2. Broadcast to participant personal rooms
       const seenPids = new Set();
       (chat.participants || []).forEach(participant => {
-        const pid = participant._id || participant.id;
-        if (!pid || seenPids.has(pid)) return;
+        const pid = parseInt(participant._id || participant.id);
+        if (!pid || isNaN(pid) || seenPids.has(pid)) return;
         seenPids.add(pid);
 
         io.to(`user:${pid}`).emit('message:new', messageJSON);
-        if (pid !== req.user.id) {
-          io.to(`user:${pid}`).emit('message:notification', {
+        io.to(`user:${String(pid)}`).emit('message:new', messageJSON);
+        if (pid !== parseInt(req.user.id)) {
+          const notifPayload = {
             message: messageJSON,
             chat: {
               _id: chat.id,
               participants: chat.participants
             }
-          });
+          };
+          io.to(`user:${pid}`).emit('message:notification', notifPayload);
+          io.to(`user:${String(pid)}`).emit('message:notification', notifPayload);
         }
       });
     }
@@ -94,8 +103,15 @@ exports.editMessage = async (req, res) => {
     }
 
     const updated = await Message.update(parseInt(messageId), content);
+    const messageJSON = Message.toJSON(updated);
 
-    res.json({ message: Message.toJSON(updated) });
+    if (io) {
+      const chatIdNum = parseInt(message.chat_id);
+      io.to(`chat:${chatIdNum}`).emit('message:edited', messageJSON);
+      io.to(`chat:${String(chatIdNum)}`).emit('message:edited', messageJSON);
+    }
+
+    res.json({ message: messageJSON });
   } catch (error) {
     res.status(500).json({ error: 'Error editing message' });
   }
@@ -112,6 +128,16 @@ exports.deleteMessage = async (req, res) => {
     }
 
     await Message.delete(parseInt(messageId));
+
+    if (io) {
+      const chatIdNum = parseInt(message.chat_id);
+      const delPayload = {
+        messageId: parseInt(messageId),
+        chatId: chatIdNum
+      };
+      io.to(`chat:${chatIdNum}`).emit('message:deleted', delPayload);
+      io.to(`chat:${String(chatIdNum)}`).emit('message:deleted', delPayload);
+    }
 
     res.json({ message: 'Message deleted successfully' });
   } catch (error) {

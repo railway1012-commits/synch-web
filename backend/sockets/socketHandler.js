@@ -12,10 +12,12 @@ module.exports = (io) => {
     }
     console.log(`User connected: ${user.username}`);
 
-    onlineUsers.set(user.id, socket.id);
-
-    // Join single unified user room for this user
-    socket.join(`user:${parseInt(user.id)}`);
+    const userIdNum = parseInt(user.id || user._id);
+    if (userIdNum && !isNaN(userIdNum)) {
+      onlineUsers.set(userIdNum, socket.id);
+      socket.join(`user:${userIdNum}`);
+      socket.join(`user:${String(userIdNum)}`);
+    }
 
     await User.updateStatus(user.id, 'online');
 
@@ -31,7 +33,11 @@ module.exports = (io) => {
 
     const userChats = await Chat.findByUserId(user.id);
     userChats.forEach(chat => {
-      socket.join(`chat:${chat.id}`);
+      const cId = parseInt(chat.id);
+      if (cId) {
+        socket.join(`chat:${cId}`);
+        socket.join(`chat:${String(cId)}`);
+      }
     });
 
     io.emit('user:status', {
@@ -89,22 +95,30 @@ module.exports = (io) => {
           return;
         }
 
-        // Broadcast directly to every participant's personal room (strictly deduplicated)
+        // 1. Broadcast directly to chat room for instant real-time live delivery
+        const chatIdNum = parseInt(chat.id);
+        io.to(`chat:${chatIdNum}`).emit('message:new', messageJSON);
+        io.to(`chat:${String(chatIdNum)}`).emit('message:new', messageJSON);
+
+        // 2. Broadcast directly to every participant's personal room (strictly deduplicated)
         const seenPids = new Set();
         (chat.participants || []).forEach(participant => {
-          const pid = participant._id || participant.id;
-          if (!pid || seenPids.has(pid)) return;
+          const pid = parseInt(participant._id || participant.id);
+          if (!pid || isNaN(pid) || seenPids.has(pid)) return;
           seenPids.add(pid);
 
           io.to(`user:${pid}`).emit('message:new', messageJSON);
-          if (pid !== user.id) {
-            io.to(`user:${pid}`).emit('message:notification', {
+          io.to(`user:${String(pid)}`).emit('message:new', messageJSON);
+          if (pid !== parseInt(user.id || user._id)) {
+            const notifPayload = {
               message: messageJSON,
               chat: {
                 _id: chat.id,
                 participants: chat.participants
               }
-            });
+            };
+            io.to(`user:${pid}`).emit('message:notification', notifPayload);
+            io.to(`user:${String(pid)}`).emit('message:notification', notifPayload);
           }
         });
       } catch (error) {
@@ -123,7 +137,9 @@ module.exports = (io) => {
         const updated = await Message.update(parseInt(messageId), content);
         const messageJSON = Message.toJSON(updated);
 
-        io.to(`chat:${message.chat_id}`).emit('message:edited', messageJSON);
+        const chatIdNum = parseInt(message.chat_id);
+        io.to(`chat:${chatIdNum}`).emit('message:edited', messageJSON);
+        io.to(`chat:${String(chatIdNum)}`).emit('message:edited', messageJSON);
       } catch (error) {
         socket.emit('error', { message: 'Error editing message' });
       }
@@ -138,10 +154,13 @@ module.exports = (io) => {
 
         await Message.delete(parseInt(messageId));
 
-        io.to(`chat:${message.chat_id}`).emit('message:deleted', {
+        const chatIdNum = parseInt(message.chat_id);
+        const delPayload = {
           messageId: parseInt(messageId),
-          chatId: message.chat_id
-        });
+          chatId: chatIdNum
+        };
+        io.to(`chat:${chatIdNum}`).emit('message:deleted', delPayload);
+        io.to(`chat:${String(chatIdNum)}`).emit('message:deleted', delPayload);
       } catch (error) {
         socket.emit('error', { message: 'Error deleting message' });
       }
@@ -156,60 +175,91 @@ module.exports = (io) => {
 
         const reactions = await Message.addReaction(parseInt(messageId), user.id, emoji);
 
-        io.to(`chat:${message.chat_id}`).emit('message:reacted', {
+        const chatIdNum = parseInt(message.chat_id);
+        const reactPayload = {
           messageId: parseInt(messageId),
           reactions
-        });
+        };
+        io.to(`chat:${chatIdNum}`).emit('message:reacted', reactPayload);
+        io.to(`chat:${String(chatIdNum)}`).emit('message:reacted', reactPayload);
       } catch (error) {
         socket.emit('error', { message: 'Error adding reaction' });
       }
     });
 
     socket.on('typing:start', (data) => {
-      socket.to(`chat:${data.chatId}`).emit('typing:start', {
+      const cId = parseInt(data.chatId);
+      const payload = {
         chatId: data.chatId,
         userId: user.id,
         username: user.username
-      });
+      };
+      if (cId) socket.to(`chat:${cId}`).emit('typing:start', payload);
+      socket.to(`chat:${data.chatId}`).emit('typing:start', payload);
     });
 
     socket.on('typing:stop', (data) => {
-      socket.to(`chat:${data.chatId}`).emit('typing:stop', {
+      const cId = parseInt(data.chatId);
+      const payload = {
         chatId: data.chatId,
         userId: user.id
-      });
+      };
+      if (cId) socket.to(`chat:${cId}`).emit('typing:stop', payload);
+      socket.to(`chat:${data.chatId}`).emit('typing:stop', payload);
     });
 
     socket.on('message:read', async (data) => {
       try {
         const { messageIds, chatId } = data;
+        if (!messageIds || !messageIds.length) return;
 
         await Message.markAsRead(messageIds.map(id => parseInt(id)), user.id);
 
-        socket.to(`chat:${chatId}`).emit('message:read', {
+        const cId = parseInt(chatId);
+        const readData = {
           messageIds,
+          chatId: cId || chatId,
           userId: user.id,
           readAt: new Date()
-        });
+        };
+
+        if (cId) {
+          io.to(`chat:${cId}`).emit('message:read', readData);
+          io.to(`chat:${String(cId)}`).emit('message:read', readData);
+        }
+        io.to(`chat:${chatId}`).emit('message:read', readData);
       } catch (error) {
         socket.emit('error', { message: 'Error marking messages as read' });
       }
     });
 
     socket.on('chat:join', async (chatId) => {
-      if (await Chat.isParticipant(parseInt(chatId), user.id)) {
+      const cId = parseInt(chatId);
+      if (cId && (await Chat.isParticipant(cId, user.id))) {
+        socket.join(`chat:${cId}`);
+        socket.join(`chat:${String(cId)}`);
         socket.join(`chat:${chatId}`);
       }
     });
 
     socket.on('chat:leave', (chatId) => {
+      const cId = parseInt(chatId);
+      if (cId) {
+        socket.leave(`chat:${cId}`);
+        socket.leave(`chat:${String(cId)}`);
+      }
       socket.leave(`chat:${chatId}`);
     });
 
     // Broadcast media messages (images, voice) to other users
     socket.on('message:broadcast', (message) => {
       if (message && message.chat) {
-        socket.to(`chat:${message.chat}`).emit('message:new', message);
+        const cId = parseInt(message.chat);
+        if (cId) {
+          io.to(`chat:${cId}`).emit('message:new', message);
+          io.to(`chat:${String(cId)}`).emit('message:new', message);
+        }
+        io.to(`chat:${message.chat}`).emit('message:new', message);
       }
     });
 

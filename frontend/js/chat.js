@@ -78,16 +78,51 @@ function areMessagesDifferent(a, b) {
   for (let i = 0; i < a.length; i++) {
     const ma = a[i];
     const mb = b[i];
-    if (ma._id !== mb._id) return true;
+    if (String(ma._id) !== String(mb._id)) return true;
     if (ma.content !== mb.content) return true;
-    if (ma.deleted !== mb.deleted) return true;
-    if (ma.read !== mb.read) return true;
-    if (ma.edited !== mb.edited) return true;
+    if (!!ma.deleted !== !!mb.deleted) return true;
+    if (!!ma.read !== !!mb.read) return true;
+    if (!!ma.edited !== !!mb.edited) return true;
     const ra = ma.reactions ? JSON.stringify(ma.reactions) : '';
     const rb = mb.reactions ? JSON.stringify(mb.reactions) : '';
     if (ra !== rb) return true;
   }
   return false;
+}
+
+let liveSyncInterval = null;
+
+function startLiveChatSync() {
+  stopLiveChatSync();
+  liveSyncInterval = setInterval(async () => {
+    if (!currentChat || document.hidden || (typeof document.visibilityState !== 'undefined' && document.visibilityState !== 'visible')) {
+      return;
+    }
+    const targetChatId = currentChat._id;
+    try {
+      const data = await fetchAPI(`/api/chats/${targetChatId}/messages`);
+      const freshMessages = data.messages || [];
+      if (currentChat && String(currentChat._id) === String(targetChatId)) {
+        if (areMessagesDifferent(messages, freshMessages)) {
+          messages = freshMessages;
+          renderMessages();
+          scrollToBottom();
+          const chatKey = String(targetChatId);
+          messageCache.set(chatKey, freshMessages);
+          persistMessageCache();
+        }
+      }
+    } catch (e) {
+      // Background sync runs quietly
+    }
+  }, 2500);
+}
+
+function stopLiveChatSync() {
+  if (liveSyncInterval) {
+    clearInterval(liveSyncInterval);
+    liveSyncInterval = null;
+  }
 }
 
 initMessageCache();
@@ -517,9 +552,13 @@ async function selectChat(chatId) {
   currentChat = chat;
   joinChat(chatId);
   const savedNicknames = JSON.parse(localStorage.getItem('synch_nicknames') || '{}');
-  const otherParticipant = chat.participants?.find(p => p._id !== currentUser._id);
+  const myId = currentUser ? (currentUser._id || currentUser.id) : null;
+  const otherParticipant = chat.participants?.find(p => {
+    const pId = p._id || p.id;
+    return myId ? String(pId) !== String(myId) : true;
+  });
   const isUnavailable = otherParticipant?.isDeleted || otherParticipant?.username === 'Account Unavailable' || otherParticipant?.username?.startsWith('unavailable_');
-  const nickname = isUnavailable ? null : savedNicknames[otherParticipant?._id];
+  const nickname = isUnavailable ? null : savedNicknames[otherParticipant?._id || otherParticipant?.id];
   const name = isUnavailable ? 'Account Unavailable' : (nickname || (chat.type === 'group' ? chat.name : otherParticipant?.username || 'User'));
   const status = isUnavailable ? 'offline' : (otherParticipant?.status || 'offline');
 
@@ -549,6 +588,7 @@ async function selectChat(chatId) {
   document.querySelector('.chat-app').classList.add('chat-open');
   renderChatList(elements.searchChats ? elements.searchChats.value : '');
   await loadMessages();
+  startLiveChatSync();
 }
 
 async function loadMessages() {
@@ -635,7 +675,9 @@ function formatDateSeparator(date) {
 }
 
 function createMessageHTML(msg) {
-  const isSent = msg.sender?._id === currentUser._id || msg.senderId === currentUser._id;
+  const myId = currentUser ? (currentUser._id || currentUser.id) : null;
+  const senderId = msg.sender?._id || msg.sender?.id || msg.senderId || (typeof msg.sender === 'object' ? null : msg.sender);
+  const isSent = !!(myId && senderId && String(senderId) === String(myId));
   const bubbleStyle = localStorage.getItem('synch_bubbleStyle') || 'modern';
   if (msg.deleted) return `<div class="message ${isSent ? 'sent' : ''}" data-message-id="${msg._id}"><div class="message-content"><div class="message-bubble message-deleted" data-style="${bubbleStyle}"><span class="message-text">Message deleted</span></div></div></div>`;
   let content = msg.replyTo ? `<div class="message-reply"><strong>${escapeHtml(msg.replyTo.sender?.username || 'User')}</strong><p>${escapeHtml(msg.replyTo.content?.substring(0, 50) || '')}</p></div>` : '';
@@ -689,7 +731,10 @@ function createMessageHTML(msg) {
     `;
   }
 
-  const otherParticipant = currentChat?.participants?.find(p => p._id !== currentUser._id);
+  const otherParticipant = currentChat?.participants?.find(p => {
+    const pId = p._id || p.id;
+    return myId ? String(pId) !== String(myId) : true;
+  });
   const chatIsUnavailable = !isSent && (otherParticipant?.isDeleted || otherParticipant?.username === 'Account Unavailable' || otherParticipant?.username?.startsWith('unavailable_'));
   const isSenderUnavailable = msg.sender?.isDeleted || msg.sender?.username === 'Account Unavailable' || msg.sender?.username?.startsWith('unavailable_') || chatIsUnavailable;
   const isRead = !!msg.read || (msg.readBy && msg.readBy.length > 0);
@@ -710,13 +755,19 @@ function createMessageHTML(msg) {
 function attachMessageListeners(el) { el.addEventListener('contextmenu', (e) => { e.preventDefault(); showContextMenu(e, el.dataset.messageId); }); }
 
 function appendMessage(msg) {
-  const emptyState = elements.messagesContainer.querySelector('.empty-state');
-  if (emptyState) emptyState.remove();
+  try {
+    const emptyState = elements.messagesContainer.querySelector('.empty-state');
+    if (emptyState) emptyState.remove();
 
-  elements.messagesContainer.insertAdjacentHTML('beforeend', createMessageHTML(msg));
-  const newEl = elements.messagesContainer.lastElementChild;
-  if (newEl) attachMessageListeners(newEl);
-  scrollToBottom();
+    elements.messagesContainer.insertAdjacentHTML('beforeend', createMessageHTML(msg));
+    const newEl = elements.messagesContainer.lastElementChild;
+    if (newEl) attachMessageListeners(newEl);
+    scrollToBottom();
+  } catch (err) {
+    console.error('appendMessage error, falling back to renderMessages:', err);
+    renderMessages();
+    scrollToBottom();
+  }
 }
 
 function renderMessages() {
@@ -1025,7 +1076,14 @@ document.getElementById('chatContextMenu')?.querySelectorAll('.context-menu-item
   });
 });
 
-document.getElementById('backToChatsBtn')?.addEventListener('click', () => { document.querySelector('.chat-app').classList.remove('chat-open'); currentChat = null; elements.noChatSelected.style.display = 'flex'; elements.chatView.style.display = 'none'; });
+document.getElementById('backToChatsBtn')?.addEventListener('click', () => {
+  document.querySelector('.chat-app').classList.remove('chat-open');
+  if (currentChat) leaveChat(currentChat._id);
+  currentChat = null;
+  stopLiveChatSync();
+  elements.noChatSelected.style.display = 'flex';
+  elements.chatView.style.display = 'none';
+});
 let currentConnectTab = 'tab-discover';
 let ignoredSuggestions = JSON.parse(localStorage.getItem('synch_ignored_suggestions') || '[]');
 
@@ -2978,6 +3036,10 @@ document.getElementById('confirmGoogleSetPasswordBtn')?.addEventListener('click'
 
 function onSocketConnected() {
   loadChats();
+  if (currentChat && currentChat._id) {
+    joinChat(currentChat._id);
+    loadMessages();
+  }
 }
 
 function onSocketDisconnected() {
@@ -2996,23 +3058,36 @@ const processedMessageIds = new Set();
 function onNewMessage(message) {
   if (!message || !message._id) return;
 
+  const msgIdStr = String(message._id);
   // Deduplicate: ignore if this message ID was already handled
-  if (processedMessageIds.has(message._id)) {
+  if (processedMessageIds.has(msgIdStr)) {
     return;
   }
-  processedMessageIds.add(message._id);
+  processedMessageIds.add(msgIdStr);
   if (processedMessageIds.size > 2000) {
     const oldest = processedMessageIds.values().next().value;
     processedMessageIds.delete(oldest);
   }
 
-  const isCurrentChat = !!(currentChat && (parseInt(currentChat._id) === parseInt(message.chat) || currentChat._id === message.chat));
-  const isSender = (message.sender?._id === currentUser._id || message.senderId === currentUser._id);
+  const currentChatIdStr = currentChat ? String(currentChat._id) : null;
+  const msgChatIdStr = message.chat ? String(message.chat) : null;
+  const isCurrentChat = !!(currentChatIdStr && msgChatIdStr && currentChatIdStr === msgChatIdStr);
+
+  const myIdStr = currentUser ? String(currentUser._id || currentUser.id || '') : '';
+  const senderIdStr = String(message.sender?._id || message.sender?.id || message.senderId || (typeof message.sender === 'object' ? '' : message.sender || ''));
+  const isSender = !!(myIdStr && senderIdStr && myIdStr === senderIdStr);
 
   if (isCurrentChat) {
-    if (!messages.find(m => m._id === message._id)) {
+    const exists = messages.some(m => String(m._id) === msgIdStr);
+    if (!exists) {
       messages.push(message);
-      appendMessage(message);
+      try {
+        appendMessage(message);
+      } catch (err) {
+        console.error('appendMessage error, falling back to renderMessages:', err);
+        renderMessages();
+        scrollToBottom();
+      }
     }
 
     if (!isSender) {
@@ -3021,26 +3096,27 @@ function onNewMessage(message) {
   }
 
   // Also update message cache for this chat
-  const msgChatKey = String(message.chat);
-  if (messageCache.has(msgChatKey)) {
-    const list = messageCache.get(msgChatKey);
-    if (!list.some(m => m._id === message._id)) {
-      list.push(message);
-      if (list.length > 80) list.shift();
+  if (msgChatIdStr) {
+    if (messageCache.has(msgChatIdStr)) {
+      const list = messageCache.get(msgChatIdStr);
+      if (!list.some(m => String(m._id) === msgIdStr)) {
+        list.push(message);
+        if (list.length > 80) list.shift();
+        persistMessageCache();
+      }
+    } else if (isCurrentChat) {
+      messageCache.set(msgChatIdStr, [message]);
       persistMessageCache();
     }
-  } else if (isCurrentChat) {
-    messageCache.set(msgChatKey, [message]);
-    persistMessageCache();
   }
 
-  const msgChatId = parseInt(message.chat) || message.chat;
-  const chat = chats.find(c => c._id === msgChatId || c._id == message.chat);
+  const numericChatId = parseInt(message.chat);
+  const chat = chats.find(c => String(c._id) === msgChatIdStr || (numericChatId && parseInt(c._id) === numericChatId));
   if (chat) {
     chat.lastMessage = {
       content: message.content,
       type: message.type,
-      senderId: message.sender?._id || message.senderId,
+      senderId: message.sender?._id || message.sender?.id || message.senderId,
       createdAt: message.createdAt
     };
     if (!isCurrentChat && !isSender) {
@@ -3059,14 +3135,14 @@ function onNewMessage(message) {
 }
 
 function onMessageEdited(message) {
-  const index = messages.findIndex(m => m._id === message._id);
+  const index = messages.findIndex(m => String(m._id) === String(message._id));
   if (index !== -1) {
     messages[index] = message;
     renderMessages();
   }
   let cacheUpdated = false;
   for (const [cid, msgList] of messageCache.entries()) {
-    const cIdx = msgList.findIndex(m => m._id === message._id);
+    const cIdx = msgList.findIndex(m => String(m._id) === String(message._id));
     if (cIdx !== -1) {
       msgList[cIdx] = message;
       cacheUpdated = true;
@@ -3077,7 +3153,7 @@ function onMessageEdited(message) {
 }
 
 function onMessageDeleted(data) {
-  const index = messages.findIndex(m => m._id === data.messageId);
+  const index = messages.findIndex(m => String(m._id) === String(data.messageId));
   if (index !== -1) {
     messages[index].deleted = true;
     messages[index].content = '';
@@ -3085,7 +3161,7 @@ function onMessageDeleted(data) {
   }
   let cacheUpdated = false;
   for (const [cid, msgList] of messageCache.entries()) {
-    const cachedMsg = msgList.find(m => m._id === data.messageId);
+    const cachedMsg = msgList.find(m => String(m._id) === String(data.messageId));
     if (cachedMsg) {
       cachedMsg.deleted = true;
       cachedMsg.content = '';
@@ -3097,14 +3173,14 @@ function onMessageDeleted(data) {
 }
 
 function onMessageReacted(data) {
-  const index = messages.findIndex(m => m._id === data.messageId);
+  const index = messages.findIndex(m => String(m._id) === String(data.messageId));
   if (index !== -1) {
     messages[index].reactions = data.reactions;
     renderMessages();
   }
   let cacheUpdated = false;
   for (const [cid, msgList] of messageCache.entries()) {
-    const cachedMsg = msgList.find(m => m._id === data.messageId);
+    const cachedMsg = msgList.find(m => String(m._id) === String(data.messageId));
     if (cachedMsg) {
       cachedMsg.reactions = data.reactions;
       cacheUpdated = true;
@@ -3117,14 +3193,14 @@ function onMessageReacted(data) {
 function onMessageRead(data) {
   if (data.messageIds && Array.isArray(data.messageIds)) {
     data.messageIds.forEach(id => {
-      const msg = messages.find(m => m._id == id);
+      const msg = messages.find(m => String(m._id) === String(id));
       if (msg) msg.read = true;
       const el = document.querySelector(`.message[data-message-id="${id}"] .message-status`);
       if (el) {
         el.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#0084FF" stroke-width="2" class="read" style="color: #0084FF;"><polyline points="20 6 9 17 4 12"/><polyline points="20 12 11 20 7 16"/></svg>';
       }
       for (const [cid, msgList] of messageCache.entries()) {
-        const cachedMsg = msgList.find(m => m._id == id);
+        const cachedMsg = msgList.find(m => String(m._id) === String(id));
         if (cachedMsg) {
           cachedMsg.read = true;
         }
@@ -3135,7 +3211,9 @@ function onMessageRead(data) {
 }
 
 function onTypingStart(data) {
-  if (data.chatId === currentChat?._id && data.userId !== currentUser._id) {
+  const currentChatIdStr = currentChat ? String(currentChat._id) : null;
+  const myIdStr = currentUser ? String(currentUser._id || currentUser.id || '') : '';
+  if (currentChatIdStr && String(data.chatId) === currentChatIdStr && String(data.userId) !== myIdStr) {
     elements.typingIndicator.style.display = 'flex';
     elements.typingText.textContent = `${data.username} is typing...`;
   }
@@ -3146,15 +3224,18 @@ function onTypingStart(data) {
 }
 
 function onTypingStop(data) {
-  if (data.chatId === currentChat?._id) {
+  const currentChatIdStr = currentChat ? String(currentChat._id) : null;
+  if (currentChatIdStr && String(data.chatId) === currentChatIdStr) {
     elements.typingIndicator.style.display = 'none';
   }
-  const chat = chats.find(c => c._id == data.chatId);
+  const chat = chats.find(c => String(c._id) === String(data.chatId));
   if (chat) {
     const chatItem = document.querySelector(`.chat-item[data-chat-id="${data.chatId}"] .chat-preview`);
     if (chatItem) {
       const lastMessage = chat.lastMessage;
-      const isOwn = lastMessage?.sender?._id === currentUser._id || lastMessage?.senderId === currentUser._id;
+      const myIdStr = currentUser ? String(currentUser._id || currentUser.id || '') : '';
+      const senderIdStr = String(lastMessage?.sender?._id || lastMessage?.sender?.id || lastMessage?.senderId || '');
+      const isOwn = !!(myIdStr && senderIdStr && myIdStr === senderIdStr);
       const prefix = isOwn ? 'You: ' : '';
       const preview = lastMessage ? (lastMessage.type === 'voice' ? '🎤 Voice message' : lastMessage.type === 'image' ? '🖼️ Image' : lastMessage.content || '') : 'No messages yet';
       chatItem.textContent = (prefix + preview).substring(0, 40);
@@ -3545,10 +3626,20 @@ if (typeof navigator !== 'undefined' && navigator.permissions && navigator.permi
 
 window.addEventListener('focus', () => {
   initNotificationBanner();
+  if (typeof ensureSocketConnected === 'function') ensureSocketConnected();
+  if (currentChat && currentChat._id) {
+    loadMessages();
+  }
+  loadChats();
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     initNotificationBanner();
+    if (typeof ensureSocketConnected === 'function') ensureSocketConnected();
+    if (currentChat && currentChat._id) {
+      loadMessages();
+    }
+    loadChats();
   }
 });
 
@@ -3673,18 +3764,22 @@ function onMessageNotification(data) {
   const settings = JSON.parse(localStorage.getItem('synch_settings') || '{}');
   if (settings.desktopNotifications === false) return;
 
-  const isSender = data.message?.sender?._id === currentUser._id || data.message?.senderId === currentUser._id;
+  const myId = currentUser ? (currentUser._id || currentUser.id) : null;
+  const senderId = data.message?.sender?._id || data.message?.sender?.id || data.message?.senderId || (typeof data.message?.sender === 'object' ? null : data.message?.sender);
+  const isSender = !!(myId && senderId && String(senderId) === String(myId));
   if (isSender) return;
 
-  const isCurrentChatAndFocused = document.hasFocus() && currentChat && (parseInt(currentChat._id) === parseInt(data.chat?._id || data.message?.chat));
+  const currentChatIdStr = currentChat ? String(currentChat._id) : null;
+  const msgChatIdStr = String(data.chat?._id || data.message?.chat || '');
+  const isCurrentChatAndFocused = document.hasFocus() && currentChatIdStr && (currentChatIdStr === msgChatIdStr);
   if (isCurrentChatAndFocused) return;
 
   // Deduplicate by message ID across events and open browser tabs
   const msgId = data.message?._id || data.message?.id;
   if (msgId) {
-    if (recentlyNotifiedMsgIds.has(msgId)) return;
-    recentlyNotifiedMsgIds.add(msgId);
-    setTimeout(() => recentlyNotifiedMsgIds.delete(msgId), 15000);
+    if (recentlyNotifiedMsgIds.has(String(msgId))) return;
+    recentlyNotifiedMsgIds.add(String(msgId));
+    setTimeout(() => recentlyNotifiedMsgIds.delete(String(msgId)), 15000);
 
     const lockKey = 'synch_last_notif_' + msgId;
     const lastNotifTime = localStorage.getItem(lockKey);
@@ -3694,7 +3789,10 @@ function onMessageNotification(data) {
     localStorage.setItem(lockKey, Date.now().toString());
   }
 
-  const otherParticipant = data.chat?.participants?.find(p => p._id !== currentUser._id);
+  const otherParticipant = data.chat?.participants?.find(p => {
+    const pId = p._id || p.id;
+    return myId ? String(pId) !== String(myId) : true;
+  });
   const senderName = data.message?.sender?.username || otherParticipant?.username || 'New Message';
   let bodyText = 'New message';
   if (settings.messagePreview !== false) {
