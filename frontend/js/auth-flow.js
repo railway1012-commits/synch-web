@@ -30,10 +30,102 @@
   }
 
   function triggerStepAnimation() {
+    dismissErrorPopup();
     if (!stepEl) return;
     stepEl.classList.remove('auth-step-animate');
     void stepEl.offsetWidth;
     stepEl.classList.add('auth-step-animate');
+  }
+
+  let currentErrorTimer = null;
+
+  function dismissErrorPopup() {
+    const container = document.getElementById('authErrorPopupContainer');
+    if (!container) return;
+    const popups = container.querySelectorAll('.auth-error-popup');
+    popups.forEach(p => {
+      if (!p.classList.contains('closing')) {
+        p.classList.add('closing');
+        setTimeout(() => { if (p.parentNode) p.remove(); }, 220);
+      }
+    });
+    if (currentErrorTimer) {
+      clearTimeout(currentErrorTimer);
+      currentErrorTimer = null;
+    }
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function showErrorPopup(msg, inputEl = null) {
+    if (!msg) return;
+
+    if (inputEl) {
+      inputEl.classList.remove('has-error');
+      void inputEl.offsetWidth;
+      inputEl.classList.add('has-error');
+      try { inputEl.focus(); } catch (e) {}
+
+      const onInput = () => {
+        inputEl.classList.remove('has-error');
+        dismissErrorPopup();
+        inputEl.removeEventListener('input', onInput);
+      };
+      inputEl.addEventListener('input', onInput);
+    }
+
+    let container = document.getElementById('authErrorPopupContainer');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'authErrorPopupContainer';
+      container.className = 'auth-error-popup-container';
+      document.body.appendChild(container);
+    }
+
+    if (currentErrorTimer) {
+      clearTimeout(currentErrorTimer);
+      currentErrorTimer = null;
+    }
+
+    container.innerHTML = `
+      <div class="auth-error-popup" role="alert">
+        <div class="auth-error-popup-icon">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <div class="auth-error-popup-msg">${escapeHtml(msg)}</div>
+        <button type="button" class="auth-error-popup-close" aria-label="Close">&times;</button>
+      </div>
+    `;
+
+    const popup = container.querySelector('.auth-error-popup');
+    const closeBtn = container.querySelector('.auth-error-popup-close');
+
+    if (closeBtn) {
+      closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dismissErrorPopup();
+      });
+    }
+
+    if (popup) {
+      popup.addEventListener('click', () => {
+        dismissErrorPopup();
+      });
+    }
+
+    currentErrorTimer = setTimeout(dismissErrorPopup, 4500);
   }
 
   function looksLikeEmail(v) {
@@ -41,19 +133,11 @@
   }
 
   function showFieldError(el, msg) {
-    let err = el.parentElement.querySelector('.field-error');
-    if (!err) {
-      err = document.createElement('div');
-      err.className = 'field-error';
-      el.parentElement.appendChild(err);
-    }
-    err.textContent = msg;
-    el.classList.add('has-error');
+    showErrorPopup(msg, el);
   }
   function clearFieldError(el) {
-    const err = el.parentElement.querySelector('.field-error');
-    if (err) err.remove();
-    el.classList.remove('has-error');
+    if (el) el.classList.remove('has-error');
+    dismissErrorPopup();
   }
 
   function markSelfChallenge(challengeId) {
@@ -110,13 +194,7 @@
   }
 
   function renderError(msg) {
-    let el = stepEl.querySelector('.auth-alert');
-    if (!el) {
-      el = document.createElement('div');
-      el.className = 'auth-alert';
-      stepEl.prepend(el);
-    }
-    el.textContent = msg;
+    showErrorPopup(msg);
   }
 
   // ---------- Step: Entry (tabs + identifier + google) ----------
@@ -268,7 +346,7 @@
               body: JSON.stringify({ identifier: flow.identifier, password: pwInput.value })
             });
             if (res.requires2FA) {
-              hideLoading();
+              await hideLoading();
               if (res.challengeId) markSelfChallenge(res.challengeId);
               if (res.defaultMethod === 'device' && res.challengeId) {
                 render2FADevicePrompt(res, remember);
@@ -277,10 +355,10 @@
               }
               return;
             }
-            hideLoading();
+            await hideLoading();
             completeAuth(res.token, res.user, remember);
           } catch (err) {
-            hideLoading();
+            await hideLoading();
             if (err.rawError === 'GOOGLE_ONLY_ACCOUNT') {
               renderGoogleOnly();
               return;
@@ -448,17 +526,15 @@
           method: 'POST',
           body: JSON.stringify({ identifier: userIdentifier, email: data.email })
         });
-        hideLoading();
+        await hideLoading();
         data.challengeId = res.challengeId;
         markSelfChallenge(res.challengeId);
         render2FADevicePrompt(data, remember);
       } catch (err) {
-        hideLoading();
+        await hideLoading();
+        showErrorPopup(err.message || 'Failed to resend request');
         const errEl = document.getElementById('devicePromptErrorMsg');
-        if (errEl) {
-          errEl.textContent = err.message || 'Failed to resend request';
-          errEl.style.display = 'block';
-        }
+        if (errEl) errEl.style.display = 'none';
       }
     });
 
@@ -532,11 +608,11 @@
           method: 'POST',
           body: JSON.stringify({ identifier: userIdentifier, email: data.email })
         });
-        hideLoading();
+        await hideLoading();
         data.challengeId = res.challengeId;
         render2FADevicePrompt(data, remember);
       } catch (err) {
-        hideLoading();
+        await hideLoading();
         renderError(err.message || 'Failed to send new request');
       }
     });
@@ -551,21 +627,20 @@
         const res = await apiRequest(`/api/auth/2fa/check-device-prompt/${challengeId}`);
         if (res.status === 'approved' && res.token) {
           clearInterval(activeChallengePollTimer);
-          hideLoading();
+          await hideLoading();
           render2FAApprovedScreen(res.token, res.user, remember);
         } else if (res.status === 'declined') {
           clearInterval(activeChallengePollTimer);
-          hideLoading();
+          await hideLoading();
           render2FADeclinedScreen(data, remember);
         } else if (res.status === 'expired') {
           clearInterval(activeChallengePollTimer);
+          await hideLoading();
+          showErrorPopup('This request has expired. Click Resend or Try another way.');
           const statusEl = document.getElementById('devicePromptStatusNotice');
           const errEl = document.getElementById('devicePromptErrorMsg');
           if (statusEl) statusEl.style.display = 'none';
-          if (errEl) {
-            errEl.textContent = 'This request has expired. Click Resend or Try another way.';
-            errEl.style.display = 'block';
-          }
+          if (errEl) errEl.style.display = 'none';
         }
       } catch (e) {}
     }, 1200);
@@ -633,12 +708,12 @@
           method: 'POST',
           body: JSON.stringify({ identifier: userIdentifier, email: data.email })
         });
-        hideLoading();
+        await hideLoading();
         data.challengeId = res.challengeId;
         markSelfChallenge(res.challengeId);
         render2FADevicePrompt(data, remember);
       } catch (err) {
-        hideLoading();
+        await hideLoading();
         renderError(err.message || 'Failed to send device request');
       }
     });
@@ -652,10 +727,10 @@
           method: 'POST',
           body: JSON.stringify({ identifier: userIdentifier, email: data.email })
         });
-        hideLoading();
+        await hideLoading();
         render2FAEmailCode(data, remember);
       } catch (err) {
-        hideLoading();
+        await hideLoading();
         renderError(err.message || 'Failed to send verification code');
       }
     });
@@ -712,7 +787,7 @@
           method: 'POST',
           body: JSON.stringify({ identifier: userIdentifier, email: data.email })
         });
-        hideLoading();
+        await hideLoading();
         if (msgEl) {
           msgEl.style.display = 'block';
           msgEl.style.background = 'rgba(16, 185, 129, 0.12)';
@@ -720,13 +795,9 @@
           msgEl.textContent = 'Verification code resent successfully!';
         }
       } catch (err) {
-        hideLoading();
-        if (msgEl) {
-          msgEl.style.display = 'block';
-          msgEl.style.background = 'rgba(239, 68, 68, 0.12)';
-          msgEl.style.color = 'var(--danger)';
-          msgEl.textContent = err.message || 'Failed to resend code';
-        }
+        await hideLoading();
+        showErrorPopup(err.message || 'Failed to resend code');
+        if (msgEl) msgEl.style.display = 'none';
       }
     });
 
@@ -745,10 +816,10 @@
           method: 'POST',
           body: JSON.stringify({ email: userEmail, code })
         });
-        hideLoading();
+        await hideLoading();
         completeAuth(res.token, res.user, remember);
       } catch (err) {
-        hideLoading();
+        await hideLoading();
         showFieldError(codeInput, err.message);
       }
     });
@@ -908,12 +979,8 @@
         }, 1000);
       } catch (err) {
         await hideLoading();
-        if (msgEl) {
-          msgEl.style.display = 'block';
-          msgEl.style.background = 'rgba(239, 68, 68, 0.12)';
-          msgEl.style.color = 'var(--danger)';
-          msgEl.textContent = err.message || 'Failed to resend code';
-        }
+        showErrorPopup(err.message || 'Failed to resend code');
+        if (msgEl) msgEl.style.display = 'none';
       }
     });
 
@@ -1052,10 +1119,10 @@
       try {
         showLoading('Saving...');
         await apiRequest('/api/auth/set-password', { method: 'POST', body: JSON.stringify({ password: pw1.value }) });
-        hideLoading();
+        await hideLoading();
         renderProfileSetup();
       } catch (err) {
-        hideLoading();
+        await hideLoading();
         showFieldError(pw2, err.message);
       }
     });
@@ -1131,11 +1198,11 @@
           } catch (e) { /* avatar is optional; ignore upload failure here */ }
         }
 
-        hideLoading();
+        await hideLoading();
         localStorage.setItem('synch_show_tutorial', '1');
         window.location.href = '/chat.html';
       } catch (err) {
-        hideLoading();
+        await hideLoading();
         showFieldError(usernameInput, err.message);
       }
     });
