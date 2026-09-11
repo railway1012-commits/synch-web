@@ -2153,7 +2153,15 @@
   }
 
   /* Toasts on Mobile */
-  .toast-container,
+  .toast-container {
+    top: 12px !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: max-content !important;
+    max-width: calc(100% - 24px) !important;
+  }
+
   .freq-toast-container {
     top: 10px !important;
     left: 10px !important;
@@ -2162,7 +2170,6 @@
     max-width: 100% !important;
   }
 
-  .toast,
   .freq-toast {
     width: 100% !important;
     max-width: 100% !important;

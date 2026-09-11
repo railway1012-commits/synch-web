@@ -10,20 +10,69 @@ function showToast(message, type = 'info') {
   recentToastLog.set(key, now);
   setTimeout(() => recentToastLog.delete(key), 3000);
 
-  const container = document.getElementById('toastContainer');
-  if (!container) return;
+  let container = document.getElementById('toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
 
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
-  toast.textContent = message;
+  toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+
+  let iconSvg = '';
+  if (type === 'success') {
+    iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  } else if (type === 'warning') {
+    iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+  } else if (type === 'info') {
+    iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+  } else {
+    // error
+    iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+  }
+
+  const iconDiv = document.createElement('div');
+  iconDiv.className = 'toast-icon';
+  iconDiv.innerHTML = iconSvg;
+
+  const msgDiv = document.createElement('div');
+  msgDiv.className = 'toast-msg';
+  msgDiv.textContent = message;
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'toast-close';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.innerHTML = '&times;';
+
+  toast.appendChild(iconDiv);
+  toast.appendChild(msgDiv);
+  toast.appendChild(closeBtn);
+
+  let dismissTimer = null;
+  function dismiss() {
+    if (dismissTimer) {
+      clearTimeout(dismissTimer);
+      dismissTimer = null;
+    }
+    if (toast.classList.contains('closing')) return;
+    toast.classList.add('closing');
+    setTimeout(() => {
+      if (toast.parentNode) toast.remove();
+    }, 220);
+  }
+
+  closeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dismiss();
+  });
+  toast.addEventListener('click', dismiss);
 
   container.appendChild(toast);
-
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateX(100%)';
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
+  dismissTimer = setTimeout(dismiss, 3800);
 }
 
 
@@ -460,3 +509,27 @@ document.getElementById('confirmModal')?.addEventListener('click', (e) => {
     }
   }
 });
+
+// Check for queued auth toast (e.g. 'Verified' for email 2FA or 'Signed in successfully')
+try {
+  const pendingAuthToast = sessionStorage.getItem('synch_auth_toast');
+  if (pendingAuthToast) {
+    sessionStorage.removeItem('synch_auth_toast');
+    const parsed = JSON.parse(pendingAuthToast);
+    if (parsed && parsed.message) {
+      let shown = false;
+      const trigger = () => {
+        if (shown) return;
+        shown = true;
+        setTimeout(() => {
+          showToast(parsed.message, parsed.type || 'success');
+        }, 350);
+      };
+      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        trigger();
+      } else {
+        window.addEventListener('DOMContentLoaded', trigger, { once: true });
+      }
+    }
+  }
+} catch (e) {}

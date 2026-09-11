@@ -28,27 +28,51 @@
 
   // Modern Non-Blocking Toast
   function showToast(message, type = 'info') {
-    let container = document.querySelector('.admin-toast-container');
+    let container = document.getElementById('toastContainer');
     if (!container) {
       container = document.createElement('div');
-      container.className = 'admin-toast-container';
-      container.style.cssText = 'position: fixed; bottom: 24px; right: 24px; z-index: 999999; display: flex; flex-direction: column; gap: 8px; pointer-events: none;';
+      container.id = 'toastContainer';
+      container.className = 'toast-container';
       document.body.appendChild(container);
     }
 
     const toast = document.createElement('div');
-    toast.className = 'admin-toast ' + type;
-    const bg = type === 'error' ? '#ef4444' : type === 'success' ? '#10b981' : type === 'warning' ? '#f59e0b' : '#3b82f6';
-    toast.style.cssText = 'background: ' + bg + '; color: #ffffff; padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.4); pointer-events: auto; animation: fadeIn 0.25s ease;';
-    toast.textContent = message;
+    toast.className = `toast ${type}`;
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+
+    let iconSvg = '';
+    if (type === 'success') {
+      iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    } else if (type === 'warning') {
+      iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+    } else if (type === 'info') {
+      iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+    } else {
+      iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+    }
+
+    toast.innerHTML = `
+      <div class="toast-icon">${iconSvg}</div>
+      <div class="toast-msg">${String(message).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+      <button type="button" class="toast-close" aria-label="Close">&times;</button>
+    `;
+
+    let timer = null;
+    function dismiss() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (toast.classList.contains('closing')) return;
+      toast.classList.add('closing');
+      setTimeout(() => { if (toast.parentNode) toast.remove(); }, 220);
+    }
+
+    toast.querySelector('.toast-close').addEventListener('click', (e) => {
+      e.stopPropagation();
+      dismiss();
+    });
+    toast.addEventListener('click', dismiss);
 
     container.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateY(10px)';
-      toast.style.transition = 'all 0.3s ease';
-      setTimeout(() => toast.remove(), 300);
-    }, 3200);
+    timer = setTimeout(dismiss, 3800);
   }
 
   async function api(path, options = {}) {

@@ -65,10 +65,10 @@
       .replace(/'/g, '&#039;');
   }
 
-  function showErrorPopup(msg, inputEl = null) {
+  function showAuthPopup(msg, type = 'error', inputEl = null) {
     if (!msg) return;
 
-    if (inputEl) {
+    if (inputEl && type === 'error') {
       inputEl.classList.remove('has-error');
       void inputEl.offsetWidth;
       inputEl.classList.add('has-error');
@@ -95,14 +95,21 @@
       currentErrorTimer = null;
     }
 
+    const isSuccess = type === 'success';
+    const iconSvg = isSuccess
+      ? `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+           <polyline points="20 6 9 17 4 12"/>
+         </svg>`
+      : `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2">
+           <circle cx="12" cy="12" r="10"/>
+           <line x1="12" y1="8" x2="12" y2="12"/>
+           <line x1="12" y1="16" x2="12.01" y2="16"/>
+         </svg>`;
+
     container.innerHTML = `
-      <div class="auth-error-popup" role="alert">
+      <div class="auth-error-popup ${isSuccess ? 'auth-popup-success' : ''}" role="${isSuccess ? 'status' : 'alert'}">
         <div class="auth-error-popup-icon">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
+          ${iconSvg}
         </div>
         <div class="auth-error-popup-msg">${escapeHtml(msg)}</div>
         <button type="button" class="auth-error-popup-close" aria-label="Close">&times;</button>
@@ -125,7 +132,15 @@
       });
     }
 
-    currentErrorTimer = setTimeout(dismissErrorPopup, 4500);
+    currentErrorTimer = setTimeout(dismissErrorPopup, isSuccess ? 3200 : 4500);
+  }
+
+  function showErrorPopup(msg, inputEl = null) {
+    showAuthPopup(msg, 'error', inputEl);
+  }
+
+  function showSuccessPopup(msg) {
+    showAuthPopup(msg, 'success');
   }
 
   function looksLikeEmail(v) {
@@ -356,7 +371,7 @@
               return;
             }
             await hideLoading();
-            completeAuth(res.token, res.user, remember);
+            completeAuth(res.token, res.user, remember, 'Signed in successfully');
           } catch (err) {
             await hideLoading();
             if (err.rawError === 'GOOGLE_ONLY_ACCOUNT') {
@@ -560,12 +575,12 @@
 
     const btn = document.getElementById('continueToChatsBtn');
     let autoRedirectTimer = setTimeout(() => {
-      completeAuth(token, user, remember);
+      completeAuth(token, user, remember, 'Verified');
     }, 2000);
 
     btn?.addEventListener('click', () => {
       clearTimeout(autoRedirectTimer);
-      completeAuth(token, user, remember);
+      completeAuth(token, user, remember, 'Verified');
     });
   }
 
@@ -817,7 +832,7 @@
           body: JSON.stringify({ email: userEmail, code })
         });
         await hideLoading();
-        completeAuth(res.token, res.user, remember);
+        completeAuth(res.token, res.user, remember, 'Verified');
       } catch (err) {
         await hideLoading();
         showFieldError(codeInput, err.message);
@@ -1232,24 +1247,36 @@
       return;
     }
 
-    completeAuth(res.token, res.user, remember);
+    completeAuth(res.token, res.user, remember, 'Signed in successfully');
   }
 
-  function completeAuth(token, user, remember) {
+  function completeAuth(token, user, remember, successMsg = null) {
     if (!token || !user) {
       renderError('Authentication failed. Please try again.');
       return;
     }
     saveSession(token, user, remember);
-    if (user?.email?.toLowerCase() === 'noreply.synch@gmail.com') {
-      window.location.href = '/admin.html';
-      return;
+
+    if (successMsg) {
+      showSuccessPopup(successMsg);
+      try {
+        sessionStorage.setItem('synch_auth_toast', JSON.stringify({ message: successMsg, type: 'success' }));
+      } catch (e) {}
     }
-    if (!user?.profileComplete) {
-      renderProfileSetup();
-      return;
-    }
-    window.location.href = '/chat.html';
+
+    const delay = successMsg ? 750 : 0;
+
+    setTimeout(() => {
+      if (user?.email?.toLowerCase() === 'noreply.synch@gmail.com') {
+        window.location.href = '/admin.html';
+        return;
+      }
+      if (!user?.profileComplete) {
+        renderProfileSetup();
+        return;
+      }
+      window.location.href = '/chat.html';
+    }, delay);
   }
 
   // ---------- Boot ----------
@@ -1278,6 +1305,19 @@
     flow.googleReady = true;
 
     if (flow.step === 'entry') renderEntry();
+
+    try {
+      const pendingToast = sessionStorage.getItem('synch_auth_toast');
+      if (pendingToast) {
+        sessionStorage.removeItem('synch_auth_toast');
+        const parsed = JSON.parse(pendingToast);
+        if (parsed?.message) {
+          setTimeout(() => {
+            showSuccessPopup(parsed.message);
+          }, 250);
+        }
+      }
+    } catch (e) {}
   }
 
   boot();
