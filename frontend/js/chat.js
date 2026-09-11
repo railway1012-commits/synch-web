@@ -20,6 +20,78 @@ if (window.visualViewport) {
 let chats = [];
 let currentChat = null;
 let messages = [];
+
+// ====================================================
+// MESSAGE CACHING SYSTEM (Stale-While-Revalidate)
+// ====================================================
+const messageCache = new Map();
+let cacheSaveTimeout = null;
+
+function getMessageCacheKey() {
+  return `synch_msg_cache_${currentUser?._id || 'default'}`;
+}
+
+function initMessageCache() {
+  try {
+    const raw = localStorage.getItem(getMessageCacheKey());
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        Object.keys(parsed).forEach(chatId => {
+          if (Array.isArray(parsed[chatId])) {
+            messageCache.set(String(chatId), parsed[chatId]);
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to parse message cache from storage', err);
+  }
+}
+
+function persistMessageCache() {
+  clearTimeout(cacheSaveTimeout);
+  cacheSaveTimeout = setTimeout(() => {
+    try {
+      const cacheObj = {};
+      const entries = Array.from(messageCache.entries()).slice(-20);
+      entries.forEach(([cid, msgList]) => {
+        cacheObj[cid] = (msgList || []).slice(-60);
+      });
+      localStorage.setItem(getMessageCacheKey(), JSON.stringify(cacheObj));
+    } catch (err) {
+      try {
+        const reducedObj = {};
+        const topEntries = Array.from(messageCache.entries()).slice(-5);
+        topEntries.forEach(([cid, msgList]) => {
+          reducedObj[cid] = (msgList || []).slice(-30);
+        });
+        localStorage.setItem(getMessageCacheKey(), JSON.stringify(reducedObj));
+      } catch (e2) {}
+    }
+  }, 300);
+}
+
+function areMessagesDifferent(a, b) {
+  if (!a || !b) return true;
+  if (a.length !== b.length) return true;
+  for (let i = 0; i < a.length; i++) {
+    const ma = a[i];
+    const mb = b[i];
+    if (ma._id !== mb._id) return true;
+    if (ma.content !== mb.content) return true;
+    if (ma.deleted !== mb.deleted) return true;
+    if (ma.read !== mb.read) return true;
+    if (ma.edited !== mb.edited) return true;
+    const ra = ma.reactions ? JSON.stringify(ma.reactions) : '';
+    const rb = mb.reactions ? JSON.stringify(mb.reactions) : '';
+    if (ra !== rb) return true;
+  }
+  return false;
+}
+
+initMessageCache();
+
 let replyingTo = null;
 let isRecording = false;
 let mediaRecorder = null;
@@ -350,6 +422,7 @@ async function loadChats() {
     chats = data.chats || [];
     localStorage.setItem('synch_chats_cache', JSON.stringify(chats));
     renderChatList(elements.searchChats ? elements.searchChats.value : '');
+    prefetchRecentChats();
   } catch (error) {
     if (error.banned) {
       elements.chatList.innerHTML = `<div class="empty-state" style="padding: 24px; text-align: center;"><div style="color: #ef4444; font-size: 24px; margin-bottom: 8px;">🚫</div><p style="color: #ef4444; font-weight: 700; margin-bottom: 4px;">Account Suspended</p><p style="color: var(--text-muted); font-size: 12px;">Unable to load conversations. Your account is banned.</p></div>`;
@@ -360,6 +433,28 @@ async function loadChats() {
     }
   }
 }
+
+function prefetchRecentChats() {
+  if (!chats || chats.length === 0) return;
+  const topChats = chats.slice(0, 3);
+  topChats.forEach((chat, idx) => {
+    const cId = String(chat._id);
+    if (!messageCache.has(cId)) {
+      setTimeout(async () => {
+        try {
+          if (!messageCache.has(cId) && (!currentChat || String(currentChat._id) !== cId)) {
+            const data = await fetchAPI(`/api/chats/${cId}/messages`);
+            if (data && data.messages) {
+              messageCache.set(cId, data.messages);
+              persistMessageCache();
+            }
+          }
+        } catch (e) {}
+      }, (idx + 1) * 500);
+    }
+  });
+}
+
 
 function renderChatList(searchQuery = '') {
   const savedNicknames = JSON.parse(localStorage.getItem('synch_nicknames') || '{}');
@@ -458,22 +553,65 @@ async function selectChat(chatId) {
 
 async function loadMessages() {
   if (!currentChat) return;
-  elements.messagesContainer.innerHTML = '<div class="loading"><div class="loading-spinner"></div></div>';
-  try {
-    const data = await fetchAPI(`/api/chats/${currentChat._id}/messages`);
-    messages = data.messages || [];
+  const targetChatId = currentChat._id;
+  const chatKey = String(targetChatId);
+
+  // Check if messages for this chat are cached
+  const hasCache = messageCache.has(chatKey);
+  const cachedMessages = hasCache ? messageCache.get(chatKey) : null;
+
+  if (hasCache && Array.isArray(cachedMessages)) {
+    // 0ms instant render from cache - no spinner delay
+    messages = [...cachedMessages];
     renderMessages();
     scrollToBottom();
 
-    // Mark unread messages as read upon opening chat
+    // Mark unread messages in cache as read
     const unreadIds = messages
       .filter(m => (m.sender?._id !== currentUser._id && m.senderId !== currentUser._id) && !m.read)
       .map(m => m._id);
-
     if (unreadIds.length > 0) {
-      markMessagesAsRead(unreadIds, currentChat._id);
+      markMessagesAsRead(unreadIds, targetChatId);
     }
-  } catch (error) { showToast(getFriendlyError(error.message), 'error'); }
+  } else {
+    // Only display spinner on first cold open when no cached data exists
+    elements.messagesContainer.innerHTML = '<div class="loading"><div class="loading-spinner"></div></div>';
+  }
+
+  // Silently revalidate with server in background
+  try {
+    const data = await fetchAPI(`/api/chats/${targetChatId}/messages`);
+    const freshMessages = data.messages || [];
+
+    // Always update cache
+    messageCache.set(chatKey, freshMessages);
+    persistMessageCache();
+
+    // Reconcile DOM if user is still viewing this chat
+    if (currentChat && String(currentChat._id) === chatKey) {
+      if (!hasCache || areMessagesDifferent(messages, freshMessages)) {
+        messages = freshMessages;
+        renderMessages();
+        scrollToBottom();
+      }
+
+      // Mark unread messages as read upon fresh load
+      const unreadIds = freshMessages
+        .filter(m => (m.sender?._id !== currentUser._id && m.senderId !== currentUser._id) && !m.read)
+        .map(m => m._id);
+
+      if (unreadIds.length > 0) {
+        markMessagesAsRead(unreadIds, targetChatId);
+      }
+    }
+  } catch (error) {
+    if (!hasCache) {
+      showToast(getFriendlyError(error.message), 'error');
+      if (currentChat && String(currentChat._id) === chatKey) {
+        elements.messagesContainer.innerHTML = `<div class="empty-state"><p>${getFriendlyError(error.message)}</p></div>`;
+      }
+    }
+  }
 }
 
 function formatDateSeparator(date) {
@@ -875,7 +1013,12 @@ document.getElementById('chatContextMenu')?.querySelectorAll('.context-menu-item
     if (action === 'open') selectChat(contextMenuChatId);
     else if (action === 'delete-chat') {
       if (await showConfirm('Delete Chat', 'Confirm delete?', 'Delete', true)) {
-        try { await fetchAPI(`/api/chats/${contextMenuChatId}`, { method: 'DELETE' }); await loadChats(); } catch (e) { showToast(getFriendlyError(e.message), 'error'); }
+        try {
+          await fetchAPI(`/api/chats/${contextMenuChatId}`, { method: 'DELETE' });
+          messageCache.delete(String(contextMenuChatId));
+          persistMessageCache();
+          await loadChats();
+        } catch (e) { showToast(getFriendlyError(e.message), 'error'); }
       }
     }
     hideContextMenu();
@@ -2258,6 +2401,7 @@ async function performUserLogout() {
     });
   } catch (e) {}
 
+  messageCache.clear();
   clearSession();
   window.location.href = '/login';
 }
@@ -2876,6 +3020,20 @@ function onNewMessage(message) {
     }
   }
 
+  // Also update message cache for this chat
+  const msgChatKey = String(message.chat);
+  if (messageCache.has(msgChatKey)) {
+    const list = messageCache.get(msgChatKey);
+    if (!list.some(m => m._id === message._id)) {
+      list.push(message);
+      if (list.length > 80) list.shift();
+      persistMessageCache();
+    }
+  } else if (isCurrentChat) {
+    messageCache.set(msgChatKey, [message]);
+    persistMessageCache();
+  }
+
   const msgChatId = parseInt(message.chat) || message.chat;
   const chat = chats.find(c => c._id === msgChatId || c._id == message.chat);
   if (chat) {
@@ -2906,6 +3064,16 @@ function onMessageEdited(message) {
     messages[index] = message;
     renderMessages();
   }
+  let cacheUpdated = false;
+  for (const [cid, msgList] of messageCache.entries()) {
+    const cIdx = msgList.findIndex(m => m._id === message._id);
+    if (cIdx !== -1) {
+      msgList[cIdx] = message;
+      cacheUpdated = true;
+      break;
+    }
+  }
+  if (cacheUpdated) persistMessageCache();
 }
 
 function onMessageDeleted(data) {
@@ -2915,6 +3083,17 @@ function onMessageDeleted(data) {
     messages[index].content = '';
     renderMessages();
   }
+  let cacheUpdated = false;
+  for (const [cid, msgList] of messageCache.entries()) {
+    const cachedMsg = msgList.find(m => m._id === data.messageId);
+    if (cachedMsg) {
+      cachedMsg.deleted = true;
+      cachedMsg.content = '';
+      cacheUpdated = true;
+      break;
+    }
+  }
+  if (cacheUpdated) persistMessageCache();
 }
 
 function onMessageReacted(data) {
@@ -2923,6 +3102,16 @@ function onMessageReacted(data) {
     messages[index].reactions = data.reactions;
     renderMessages();
   }
+  let cacheUpdated = false;
+  for (const [cid, msgList] of messageCache.entries()) {
+    const cachedMsg = msgList.find(m => m._id === data.messageId);
+    if (cachedMsg) {
+      cachedMsg.reactions = data.reactions;
+      cacheUpdated = true;
+      break;
+    }
+  }
+  if (cacheUpdated) persistMessageCache();
 }
 
 function onMessageRead(data) {
@@ -2934,7 +3123,14 @@ function onMessageRead(data) {
       if (el) {
         el.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#0084FF" stroke-width="2" class="read" style="color: #0084FF;"><polyline points="20 6 9 17 4 12"/><polyline points="20 12 11 20 7 16"/></svg>';
       }
+      for (const [cid, msgList] of messageCache.entries()) {
+        const cachedMsg = msgList.find(m => m._id == id);
+        if (cachedMsg) {
+          cachedMsg.read = true;
+        }
+      }
     });
+    persistMessageCache();
   }
 }
 
@@ -3015,6 +3211,17 @@ function onUserProfileUpdated(data) {
     }
   }
 
+  // Update cached messages across all chats
+  for (const [cid, msgList] of messageCache.entries()) {
+    msgList.forEach(msg => {
+      if (msg.sender && parseInt(msg.sender._id) === updatedUserId) {
+        if (data.avatar !== undefined) msg.sender.avatar = data.avatar;
+        if (data.username) msg.sender.username = data.username;
+      }
+    });
+  }
+  persistMessageCache();
+
   // 3. Re-render sidebar chat list
   renderChatList(elements.searchChats ? elements.searchChats.value : '');
 
@@ -3068,6 +3275,16 @@ function onUserBadgeUpdated(data) {
       renderMessages();
     }
   }
+
+  // Update cached messages across all chats
+  for (const [cid, msgList] of messageCache.entries()) {
+    msgList.forEach(msg => {
+      if (msg.sender && parseInt(msg.sender._id) === updatedUserId) {
+        msg.sender.badge = badgeVal;
+      }
+    });
+  }
+  persistMessageCache();
 
   // 3. Re-render sidebar chat list
   renderChatList(elements.searchChats ? elements.searchChats.value : '');
@@ -3141,6 +3358,8 @@ function onUserDeleted(data) {
 function onChatDeleted(data) {
   const chatId = parseInt(data.chatId);
   chats = chats.filter(c => c._id !== chatId);
+  messageCache.delete(String(chatId));
+  persistMessageCache();
   if (currentChat?._id === chatId) {
     leaveChat(chatId);
     currentChat = null;
@@ -3157,6 +3376,8 @@ function onChatCleared(data) {
   if (chat) {
     chat.lastMessage = null;
   }
+  messageCache.set(String(chatId), []);
+  persistMessageCache();
   if (currentChat?._id === chatId) {
     messages = [];
     elements.messagesContainer.innerHTML = '<div class="empty-state"><p>No messages yet. Start the conversation!</p></div>';
