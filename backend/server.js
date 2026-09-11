@@ -83,6 +83,26 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/admin.html'));
 });
 
+app.get('/401', (req, res) => {
+  res.status(401).sendFile(path.join(__dirname, '../frontend/401.html'));
+});
+
+app.get('/unauthorized', (req, res) => {
+  res.status(401).sendFile(path.join(__dirname, '../frontend/401.html'));
+});
+
+app.get('/404', (req, res) => {
+  res.status(404).sendFile(path.join(__dirname, '../frontend/404.html'));
+});
+
+// 404 Catch-All Handler for unmatched routes & pages
+app.use((req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'Endpoint not found' });
+  }
+  res.status(404).sendFile(path.join(__dirname, '../frontend/404.html'));
+});
+
 // Global Express Error Handler (Handles Multer, validation, payload errors gracefully)
 const multer = require('multer');
 app.use((err, req, res, next) => {

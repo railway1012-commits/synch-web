@@ -3,7 +3,7 @@
   const user = getUser();
 
   if (!token || user?.email?.toLowerCase() !== 'noreply.synch@gmail.com') {
-    window.location.href = '/login';
+    window.location.href = '/401';
     return;
   }
 

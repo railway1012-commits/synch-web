@@ -1,10 +1,12 @@
-const CACHE_NAME = 'synch-v21';
+const CACHE_NAME = 'synch-v22';
 const STATIC_ASSETS = [
   '/',
   '/chat.html',
   '/auth.html',
   '/forgot-password.html',
   '/settings.html',
+  '/404.html',
+  '/401.html',
   '/css/main.css',
   '/css/chat.css',
   '/css/auth.css',
