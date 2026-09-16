@@ -1,12 +1,11 @@
-const CACHE_NAME = 'synch-v22';
+const CACHE_NAME = 'synch-v23';
 const STATIC_ASSETS = [
   '/',
-  '/chat.html',
-  '/auth.html',
-  '/forgot-password.html',
-  '/settings.html',
-  '/404.html',
-  '/401.html',
+  '/chat',
+  '/login',
+  '/forgot-password',
+  '/404',
+  '/401',
   '/css/main.css',
   '/css/chat.css',
   '/css/auth.css',
@@ -16,7 +15,6 @@ const STATIC_ASSETS = [
   '/js/chat.js',
   '/js/socket.js',
   '/js/webrtc-call.js',
-  '/js/settings.js',
   '/js/custom-dropdown.js',
   '/js/google-identity.js',
   '/js/auth-flow.js',
@@ -113,7 +111,7 @@ self.addEventListener('notificationclick', (event) => {
         }
       }
       if (self.clients.openWindow) {
-        let targetUrl = '/chat.html';
+        let targetUrl = '/chat';
         if (isDevicePrompt) targetUrl += '?open_prompt=1';
         else if (chatId) targetUrl += `?chat=${chatId}`;
         return self.clients.openWindow(targetUrl);

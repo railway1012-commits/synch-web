@@ -6,7 +6,7 @@ if (!token) {
 }
 
 if (currentUser?.email?.toLowerCase() === 'noreply.synch@gmail.com') {
-  window.location.href = '/admin.html';
+  window.location.href = '/admin';
 }
 
 // Fix mobile keyboard viewport issue
@@ -333,6 +333,13 @@ function initHeaderAvatar() {
 function switchAppMode(mode) {
   appMode = mode;
   document.querySelector('.chat-app').classList.remove('settings-detail-open');
+  try {
+    if (mode === 'settings') {
+      history.replaceState(null, '', '/chat?tab=settings');
+    } else if (mode === 'chats') {
+      history.replaceState(null, '', '/chat');
+    }
+  } catch (e) {}
   if (mode === 'chats') {
     elements.railChatsBtn?.classList.add('active');
     elements.railProfileBtn?.classList.remove('active');
@@ -4081,4 +4088,13 @@ refreshCurrentUser();
 updateFriendBadges();
 initNotificationBanner();
 checkPendingDevicePrompts();
+
+try {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('tab') === 'settings' || urlParams.get('view') === 'settings') {
+    switchAppMode('settings');
+    const sec = urlParams.get('section');
+    if (sec) switchSettingsSection(sec, true);
+  }
+} catch (e) {}
 

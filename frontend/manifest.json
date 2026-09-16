@@ -2,7 +2,7 @@
   "name": "SYNCH",
   "short_name": "SYNCH",
   "description": "Real-time messaging made simple",
-  "start_url": "/chat.html",
+  "start_url": "/chat",
   "display": "standalone",
   "background_color": "#0a0e14",
   "theme_color": "#0084FF",
@@ -19,12 +19,12 @@
   "shortcuts": [
     {
       "name": "New Chat",
-      "url": "/chat.html?action=new",
+      "url": "/chat?action=new",
       "description": "Start a new conversation"
     },
     {
       "name": "Settings",
-      "url": "/settings.html",
+      "url": "/chat?tab=settings",
       "description": "Open settings"
     }
   ]

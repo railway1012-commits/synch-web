@@ -6,6 +6,7 @@
   <meta name="description" content="SYNCH - Real-time messaging made simple. Connect instantly with friends and colleagues.">
   <meta name="theme-color" content="#0084FF">
   <title>SYNCH - Real-time Messaging</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="css/main.css?v=71">
   <style>
     .landing {
@@ -273,16 +274,17 @@
     </section>
 
     <footer style="text-align: center; padding: 24px; color: var(--text-muted); font-size: var(--font-xs); border-top: 1px solid var(--border-color);">
-      <p>&copy; 2024 SYNCH. All rights reserved.</p>
+      <p>&copy; <span id="copyrightYear">2026</span> SYNCH. All rights reserved.</p>
     </footer>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="js/socket.js"></script>
   <script>
+    try { document.getElementById('copyrightYear').textContent = new Date().getFullYear(); } catch (e) {}
     const token = sessionStorage.getItem('synch_token') || localStorage.getItem('synch_token');
     if (token) {
-      window.location.href = 'chat.html';
+      window.location.href = '/chat';
     }
   </script>
 </body>

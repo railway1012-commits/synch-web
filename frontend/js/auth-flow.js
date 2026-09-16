@@ -383,7 +383,7 @@
         });
 
         document.getElementById('forgotPasswordBtn').addEventListener('click', () => {
-          window.location.href = `/forgot-password.html?email=${encodeURIComponent(flow.identifier)}`;
+          window.location.href = `/forgot-password?email=${encodeURIComponent(flow.identifier)}`;
         });
       }
 
@@ -1215,7 +1215,7 @@
 
         await hideLoading();
         localStorage.setItem('synch_show_tutorial', '1');
-        window.location.href = '/chat.html';
+        window.location.href = '/chat';
       } catch (err) {
         await hideLoading();
         showFieldError(usernameInput, err.message);
@@ -1268,14 +1268,14 @@
 
     setTimeout(() => {
       if (user?.email?.toLowerCase() === 'noreply.synch@gmail.com') {
-        window.location.href = '/admin.html';
+        window.location.href = '/admin';
         return;
       }
       if (!user?.profileComplete) {
         renderProfileSetup();
         return;
       }
-      window.location.href = '/chat.html';
+      window.location.href = '/chat';
     }, delay);
   }
 
@@ -1284,10 +1284,10 @@
     if (isAuthenticated()) {
       const u = getUser();
       if (u?.email?.toLowerCase() === 'noreply.synch@gmail.com') {
-        window.location.href = '/admin.html';
+        window.location.href = '/admin';
         return;
       }
-      window.location.href = '/chat.html';
+      window.location.href = '/chat';
       return;
     }
 

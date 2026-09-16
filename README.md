@@ -88,21 +88,18 @@ synch/
 │       └── audio/
 ├── frontend/
 │   ├── index.html          # Landing page
-│   ├── login.html          # Login page
-│   ├── signup.html         # Signup page
-│   ├── chat.html           # Main chat interface
-│   ├── settings.html       # Settings page
+│   ├── auth.html           # Authentication pages (login/signup)
+│   ├── chat.html           # Main chat & embedded settings interface
 │   ├── css/
 │   │   ├── main.css        # Global styles
 │   │   ├── auth.css        # Authentication pages
 │   │   ├── chat.css        # Chat interface
-│   │   └── settings.css    # Settings page
+│   │   └── settings.css    # Settings panel styling
 │   ├── js/
 │   │   ├── auth.js         # Authentication utilities
 │   │   ├── ui.js           # UI utilities
 │   │   ├── socket.js       # Socket.io client
-│   │   ├── chat.js         # Chat functionality
-│   │   └── settings.js     # Settings functionality
+│   │   └── chat.js         # Chat & settings functionality
 │   └── assets/
 │       ├── icons/
 │       ├── images/

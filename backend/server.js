@@ -36,9 +36,29 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// ── Clean URLs / Strip .html extensions from all GET requests ────────────────
+app.use((req, res, next) => {
+  if (req.method === 'GET' && req.path.endsWith('.html')) {
+    const clean = req.path.slice(0, -5);
+    const query = req.url.slice(req.path.length);
+    if (clean === '/index') {
+      return res.redirect(301, '/' + query);
+    }
+    if (clean === '/settings') {
+      return res.redirect(301, '/chat' + (query ? `${query}&tab=settings` : '?tab=settings'));
+    }
+    if (clean === '/auth') {
+      return res.redirect(301, '/login' + query);
+    }
+    return res.redirect(301, clean + query);
+  }
+  next();
+});
+
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.static(path.join(__dirname, '../frontend'), {
+  index: false,
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -68,7 +88,7 @@ app.get('/signup', (req, res) => {
 });
 
 app.get('/auth', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/auth.html'));
+  res.redirect(301, '/login');
 });
 
 app.get('/chat', (req, res) => {
@@ -76,11 +96,20 @@ app.get('/chat', (req, res) => {
 });
 
 app.get('/settings', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/settings.html'));
+  const query = req.url.slice(req.path.length);
+  res.redirect(301, '/chat' + (query ? `${query}&tab=settings` : '?tab=settings'));
 });
 
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/admin.html'));
+});
+
+app.get('/forgot-password', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/forgot-password.html'));
+});
+
+app.get('/reset-password', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/forgot-password.html'));
 });
 
 app.get('/401', (req, res) => {
