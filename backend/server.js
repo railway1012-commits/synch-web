@@ -75,15 +75,34 @@ app.post('/api/reports', auth, userController.submitReport);
 app.post('/api/report', auth, userController.submitReport);
 
 
+function getCookie(req, name) {
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 app.get('/', (req, res) => {
+  const token = getCookie(req, 'synch_token');
+  if (token && token !== 'logged_out') {
+    return res.redirect(302, '/chat');
+  }
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
 app.get('/login', (req, res) => {
+  const token = getCookie(req, 'synch_token');
+  if (token && token !== 'logged_out') {
+    return res.redirect(302, '/chat');
+  }
   res.sendFile(path.join(__dirname, '../frontend/auth.html'));
 });
 
 app.get('/signup', (req, res) => {
+  const token = getCookie(req, 'synch_token');
+  if (token && token !== 'logged_out') {
+    return res.redirect(302, '/chat');
+  }
   res.sendFile(path.join(__dirname, '../frontend/auth.html'));
 });
 
@@ -92,6 +111,10 @@ app.get('/auth', (req, res) => {
 });
 
 app.get('/chat', (req, res) => {
+  const token = getCookie(req, 'synch_token');
+  if (token === 'logged_out') {
+    return res.redirect(302, '/login');
+  }
   res.sendFile(path.join(__dirname, '../frontend/chat.html'));
 });
 

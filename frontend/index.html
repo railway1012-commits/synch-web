@@ -2,6 +2,16 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
+  <script>
+    (function() {
+      try {
+        var t = sessionStorage.getItem('synch_token') || localStorage.getItem('synch_token');
+        if (t) {
+          window.location.replace('/chat');
+        }
+      } catch (e) {}
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="SYNCH - Real-time messaging made simple. Connect instantly with friends and colleagues.">
   <meta name="theme-color" content="#0084FF">

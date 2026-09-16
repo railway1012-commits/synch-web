@@ -2,6 +2,19 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
+  <script>
+    (function() {
+      try {
+        var t = sessionStorage.getItem('synch_token') || localStorage.getItem('synch_token');
+        if (!t) {
+          window.location.replace('/401');
+          return;
+        }
+      } catch (e) {
+        window.location.replace('/401');
+      }
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SYNCH - Admin Portal</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">

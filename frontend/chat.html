@@ -2,6 +2,22 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
+  <script>
+    (function() {
+      try {
+        var t = sessionStorage.getItem('synch_token') || localStorage.getItem('synch_token');
+        if (!t) {
+          window.location.replace('/login');
+          return;
+        }
+        if (!document.cookie.includes('synch_token=')) {
+          document.cookie = 'synch_token=' + encodeURIComponent(t) + '; path=/; max-age=2592000; SameSite=Lax';
+        }
+      } catch (e) {
+        window.location.replace('/login');
+      }
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#0084FF">
   <title>SYNCH - Chat</title>

@@ -437,11 +437,8 @@ function showBanModal(banData) {
 }
 
 function logout() {
-  localStorage.removeItem('synch_token');
-  localStorage.removeItem('synch_user');
-  sessionStorage.removeItem('synch_token');
-  sessionStorage.removeItem('synch_user');
-  window.location.href = '/login';
+  clearSession();
+  window.location.replace('/login');
 }
 
 // --- Remember-me aware storage ---
@@ -456,6 +453,10 @@ function saveSession(token, user, rememberMe) {
   storage.setItem('synch_token', token);
   storage.setItem('synch_user', JSON.stringify(user));
   storage.setItem('synch_remember', rememberMe ? '1' : '0');
+  try {
+    const maxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24 * 7;
+    document.cookie = 'synch_token=' + encodeURIComponent(token) + '; path=/; max-age=' + maxAge + '; SameSite=Lax';
+  } catch (e) {}
 }
 
 function clearSession() {
@@ -465,6 +466,9 @@ function clearSession() {
   sessionStorage.removeItem('synch_token');
   sessionStorage.removeItem('synch_user');
   sessionStorage.removeItem('synch_remember');
+  try {
+    document.cookie = 'synch_token=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+  } catch (e) {}
 }
 
 function getToken() {
