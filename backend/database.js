@@ -58,7 +58,7 @@ async function initDatabase() {
         blocked_users TEXT DEFAULT '[]',
         email_verified BOOLEAN DEFAULT FALSE,
         two_factor_enabled BOOLEAN DEFAULT FALSE,
-        profile_complete BOOLEAN DEFAULT TRUE,
+        profile_complete BOOLEAN DEFAULT FALSE,
         is_deleted BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -367,7 +367,7 @@ function safeJsonParse(val, fallback = {}) {
 }
 
 const User = {
-  create: async (username, email, password, emailVerified = false, googleId = null, avatar = null, profileComplete = true, role = 'user') => {
+  create: async (username, email, password, emailVerified = false, googleId = null, avatar = null, profileComplete = false, role = 'user') => {
     const hashedPassword = password ? bcrypt.hashSync(password, 12) : null;
     const cleanEmail = email ? email.toLowerCase().trim() : '';
     const finalUsername = username || generatePlaceholderUsername();

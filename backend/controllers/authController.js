@@ -85,7 +85,9 @@ exports.checkIdentifier = async (req, res) => {
       exists: true,
       hasPassword: !!user.password,
       hasGoogle: !!user.google_id,
-      isEmail: identifier.includes('@')
+      isEmail: identifier.includes('@'),
+      profileComplete: !!user.profile_complete,
+      maskedEmail: maskEmail(user.email)
     });
   } catch (error) {
     console.error('Check identifier error:', error);
@@ -129,12 +131,14 @@ exports.sendSignupCode = async (req, res) => {
 
     const existingEmail = await User.findByEmail(cleanEmail);
     if (existingEmail) {
-      return res.status(400).json({ error: 'Email already registered. Please sign in instead.' });
+      if (existingEmail.profile_complete) {
+        return res.status(400).json({ error: 'Email already registered. Please sign in instead.' });
+      }
     }
 
     if (username) {
       const existingUsername = await User.findByUsername(username);
-      if (existingUsername) {
+      if (existingUsername && (!existingEmail || existingUsername.id !== existingEmail.id)) {
         return res.status(400).json({ error: 'Username already taken' });
       }
     }
@@ -193,12 +197,30 @@ exports.verifySignupCode = async (req, res) => {
       pendingSignups.set(cleanEmail, { verified: true, expiresAt: Date.now() + 15 * 60 * 1000 });
     }
 
-    // If password was already provided (combined signup call), create user immediately
+    // Check if user already exists with an incomplete profile
+    const existingEmailUser = await User.findByEmail(cleanEmail);
+    if (existingEmailUser && !existingEmailUser.profile_complete) {
+      pendingSignups.delete(cleanEmail);
+      const token = generateToken(existingEmailUser.id);
+      await Session.create(existingEmailUser.id, token, req.headers['user-agent'] || 'Unknown', req.ip);
+
+      return res.json({
+        success: true,
+        verified: true,
+        token,
+        user: User.toPublicJSON(existingEmailUser),
+        needsProfileSetup: true,
+        hasPassword: !!existingEmailUser.password,
+        message: 'Email verified. Please complete your profile.'
+      });
+    }
+
+    // If password was already provided (combined signup call), create user with profile_complete: false
     if (pendingData && pendingData.password) {
       const { username, password } = pendingData;
       pendingSignups.delete(cleanEmail);
 
-      const user = await User.create(username || null, cleanEmail, password, true, null, null, true);
+      const user = await User.create(username || null, cleanEmail, password, true, null, null, false);
       const token = generateToken(user.id);
 
       await Session.create(user.id, token, req.headers['user-agent'] || 'Unknown', req.ip);
@@ -208,7 +230,9 @@ exports.verifySignupCode = async (req, res) => {
         accountCreated: true,
         message: 'Account created successfully',
         token,
-        user: User.toPublicJSON(user)
+        user: User.toPublicJSON(user),
+        needsProfileSetup: true,
+        hasPassword: true
       });
     }
 
@@ -256,7 +280,7 @@ exports.completeSignup = async (req, res) => {
 
     pendingSignups.delete(cleanEmail);
 
-    const user = await User.create(finalUsername, cleanEmail, password, true, null, null, true);
+    const user = await User.create(finalUsername, cleanEmail, password, true, null, null, false);
     const token = generateToken(user.id);
 
     await Session.create(user.id, token, req.headers['user-agent'] || 'Unknown', req.ip);
@@ -266,7 +290,9 @@ exports.completeSignup = async (req, res) => {
       accountCreated: true,
       message: 'Account created successfully',
       token,
-      user: User.toPublicJSON(user)
+      user: User.toPublicJSON(user),
+      needsProfileSetup: true,
+      hasPassword: true
     });
   } catch (error) {
     console.error('Complete signup error:', error);
@@ -559,12 +585,13 @@ exports.login = async (req, res) => {
     }
     resolveUserDeviceChallenges(user.id, socketIO, 'completed');
 
-    const updatedUser = await User.findById(user.id);
-
+    const isComplete = !!updatedUser.profile_complete;
     res.json({
-      message: 'Login successful',
+      message: isComplete ? 'Login successful' : 'Please complete your profile setup',
       token,
-      user: User.toPublicJSON(updatedUser)
+      user: User.toPublicJSON(updatedUser),
+      needsProfileSetup: !isComplete,
+      hasPassword: !!updatedUser.password
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -703,7 +730,16 @@ exports.googleAuth = async (req, res) => {
       if (socketIO) socketIO.to(`user:${user.id}`).emit('session:updated', { type: 'created' });
       resolveUserDeviceChallenges(user.id, socketIO, 'completed');
       const updated = await User.findById(user.id);
-      return res.json({ message: 'Login successful', token, user: User.toPublicJSON(updated), isNewUser: false });
+      const isComplete = !!updated.profile_complete;
+      return res.json({
+        message: isComplete ? 'Login successful' : 'Please complete your profile setup',
+        token,
+        user: User.toPublicJSON(updated),
+        isNewUser: false,
+        needsProfileSetup: !isComplete,
+        hasPassword: !!updated.password,
+        googleProfile: { name: name || null, picture: picture || null }
+      });
     }
 
     const byEmail = await User.findByEmail(email);
@@ -795,7 +831,17 @@ exports.googleAuth = async (req, res) => {
       if (socketIO) socketIO.to(`user:${byEmail.id}`).emit('session:updated', { type: 'created' });
       resolveUserDeviceChallenges(byEmail.id, socketIO, 'completed');
       const updated = await User.findById(byEmail.id);
-      return res.json({ message: 'Login successful', token, user: User.toPublicJSON(updated), isNewUser: false, justLinked: true });
+      const isComplete = !!updated.profile_complete;
+      return res.json({
+        message: isComplete ? 'Login successful' : 'Please complete your profile setup',
+        token,
+        user: User.toPublicJSON(updated),
+        isNewUser: false,
+        justLinked: true,
+        needsProfileSetup: !isComplete,
+        hasPassword: !!updated.password,
+        googleProfile: { name: name || null, picture: picture || null }
+      });
     }
 
     // Brand new account via Google.
@@ -808,6 +854,8 @@ exports.googleAuth = async (req, res) => {
       token,
       user: User.toPublicJSON(newUser),
       isNewUser: true,
+      needsProfileSetup: true,
+      hasPassword: false,
       googleProfile: { name: name || null, picture: picture || null }
     });
   } catch (error) {
@@ -900,18 +948,22 @@ exports.completeProfile = async (req, res) => {
   try {
     const { username, dob } = req.body;
 
-    if (username) {
-      const existing = await User.findByUsername(username);
-      if (existing && existing.id !== req.user.id) {
-        return res.status(400).json({ error: 'Username already taken' });
-      }
-      await User.updateUsername(req.user.id, username);
+    if (!username || username.trim().length < 3) {
+      return res.status(400).json({ error: 'Username must be at least 3 characters' });
     }
 
-    if (dob) {
-      await User.setDob(req.user.id, dob);
+    if (!dob) {
+      return res.status(400).json({ error: 'Date of birth is required' });
     }
 
+    const cleanUsername = username.trim();
+    const existing = await User.findByUsername(cleanUsername);
+    if (existing && existing.id !== req.user.id) {
+      return res.status(400).json({ error: 'Username already taken' });
+    }
+
+    await User.updateUsername(req.user.id, cleanUsername);
+    await User.setDob(req.user.id, dob);
     await User.markProfileComplete(req.user.id);
     const updated = await User.findById(req.user.id);
 

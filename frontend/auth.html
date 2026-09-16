@@ -6,7 +6,19 @@
   (function() {
     try {
       var t = sessionStorage.getItem('synch_token') || localStorage.getItem('synch_token');
+      var uStr = sessionStorage.getItem('synch_user') || localStorage.getItem('synch_user');
       if (t) {
+        if (uStr) {
+          var u = JSON.parse(uStr);
+          if (u && (u.profileComplete === false || u.profile_complete === false)) {
+            sessionStorage.clear();
+            localStorage.removeItem('synch_token');
+            localStorage.removeItem('synch_user');
+            localStorage.removeItem('synch_remember');
+            document.cookie = 'synch_token=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+            return;
+          }
+        }
         window.location.replace('/chat');
       }
     } catch (e) {}

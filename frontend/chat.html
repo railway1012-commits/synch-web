@@ -10,6 +10,14 @@
           window.location.replace('/login');
           return;
         }
+        var uStr = sessionStorage.getItem('synch_user') || localStorage.getItem('synch_user');
+        if (uStr) {
+          var u = JSON.parse(uStr);
+          if (u && (u.profileComplete === false || u.profile_complete === false)) {
+            window.location.replace('/login');
+            return;
+          }
+        }
         if (!document.cookie.includes('synch_token=')) {
           document.cookie = 'synch_token=' + encodeURIComponent(t) + '; path=/; max-age=2592000; SameSite=Lax';
         }

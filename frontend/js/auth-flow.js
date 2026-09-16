@@ -290,6 +290,38 @@
 
       await hideLoading();
 
+      // If account exists but profile setup is incomplete, send code to finish setup (or prompt password)
+      if (!res.profileComplete) {
+        if (res.isEmail) {
+          try {
+            showLoading('Sending verification code...');
+            const sendRes = await apiRequest('/api/auth/signup/send-code', {
+              method: 'POST',
+              body: JSON.stringify({ email: flow.identifier })
+            });
+            await hideLoading();
+            renderSignupVerifyCode(flow.identifier, sendRes.maskedEmail || res.maskedEmail || flow.identifier);
+            return;
+          } catch (sendErr) {
+            await hideLoading();
+            if (res.hasPassword) {
+              renderPassword(res.hasGoogle);
+              return;
+            }
+            renderError(sendErr.message);
+            return;
+          }
+        }
+        if (res.hasPassword) {
+          renderPassword(res.hasGoogle);
+          return;
+        }
+        if (res.hasGoogle) {
+          renderGoogleOnly();
+          return;
+        }
+      }
+
       if (res.hasGoogle && !res.hasPassword) {
         renderGoogleOnly();
         return;
@@ -1015,6 +1047,14 @@
         });
         if (signupResendTimerInterval) clearInterval(signupResendTimerInterval);
         await hideLoading();
+        if (res.token && res.user) {
+          saveSession(res.token, res.user, false);
+          if (res.hasPassword) {
+            // Already set a password earlier: keep it and skip password step!
+            renderProfileSetup(res.user);
+            return;
+          }
+        }
         renderCreatePassword(email);
       } catch (err) {
         await hideLoading();
@@ -1073,8 +1113,8 @@
           body: JSON.stringify({ email: email || flow.identifier, password: userPassword })
         });
         await hideLoading();
-        saveSession(res.token, res.user, true);
-        renderProfileSetup();
+        saveSession(res.token, res.user, false);
+        renderProfileSetup(res.user);
       } catch (err) {
         await hideLoading();
         showFieldError(pw2, err.message);
@@ -1133,20 +1173,24 @@
       if (pw1.value !== pw2.value) return showFieldError(pw2, 'Passwords do not match');
       try {
         showLoading('Saving...');
-        await apiRequest('/api/auth/set-password', { method: 'POST', body: JSON.stringify({ password: pw1.value }) });
+        const res = await apiRequest('/api/auth/set-password', { method: 'POST', body: JSON.stringify({ password: pw1.value }) });
         await hideLoading();
-        renderProfileSetup();
+        updateStoredUser(res.user);
+        renderProfileSetup(res.user);
       } catch (err) {
         await hideLoading();
         showFieldError(pw2, err.message);
       }
     });
 
-    document.getElementById('skipBtn').addEventListener('click', renderProfileSetup);
+    document.getElementById('skipBtn').addEventListener('click', () => {
+      renderProfileSetup(getUser());
+    });
   }
 
   // ---------- Step: profile setup (username + DOB, avatar optional) ----------
-  function renderProfileSetup() {
+  function renderProfileSetup(userData) {
+    const user = userData || getUser() || {};
     triggerStepAnimation();
     stepEl.innerHTML = `
       <h2 class="auth-step-title">Set up your profile</h2>
@@ -1171,6 +1215,11 @@
     let avatarDataUrl = null;
     const avatarInput = document.getElementById('avatarInput');
     const avatarPreview = document.getElementById('avatarPreview');
+
+    if (user.avatar) {
+      avatarPreview.innerHTML = `<img src="${escapeHtml(user.avatar)}" alt="avatar">`;
+    }
+
     avatarInput.addEventListener('change', () => {
       const file = avatarInput.files[0];
       if (!file) return;
@@ -1185,6 +1234,10 @@
     const dob = createDobPicker(document.getElementById('dobPicker'));
     const usernameInput = document.getElementById('usernameInput');
 
+    if (user.username && !/^user\d{6}$/.test(user.username)) {
+      usernameInput.value = user.username;
+    }
+
     document.getElementById('profileForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       clearFieldError(usernameInput);
@@ -1198,21 +1251,23 @@
           method: 'POST',
           body: JSON.stringify({ username, dob: dob.getValue() })
         });
-        updateStoredUser(res.user);
 
         if (avatarDataUrl) {
           try {
             const blob = await (await fetch(avatarDataUrl)).blob();
             const formData = new FormData();
             formData.append('avatar', blob, 'avatar.jpg');
-            await fetch('/api/users/avatar', {
+            const avatarRes = await fetch('/api/users/avatar', {
               method: 'PUT',
               headers: { Authorization: `Bearer ${getToken()}` },
               body: formData
             });
+            const avatarJson = await avatarRes.json();
+            if (avatarJson.user) res.user = avatarJson.user;
           } catch (e) { /* avatar is optional; ignore upload failure here */ }
         }
 
+        saveSession(getToken(), res.user, true);
         await hideLoading();
         localStorage.setItem('synch_show_tutorial', '1');
         window.location.href = '/chat';
@@ -1241,9 +1296,18 @@
       return;
     }
 
-    if (res.isNewUser) {
-      saveSession(res.token, res.user, remember);
-      renderGooglePasswordOptional(res.googleProfile);
+    const user = res.user;
+    const isProfileIncomplete = res.needsProfileSetup || (user && (user.profileComplete === false || user.profile_complete === false));
+
+    if (isProfileIncomplete) {
+      saveSession(res.token, res.user, false);
+
+      if (res.isNewUser && !res.hasPassword) {
+        renderGooglePasswordOptional(res.googleProfile);
+        return;
+      }
+
+      renderProfileSetup(res.user);
       return;
     }
 
@@ -1272,7 +1336,7 @@
         return;
       }
       if (!user?.profileComplete) {
-        renderProfileSetup();
+        renderProfileSetup(user);
         return;
       }
       window.location.href = '/chat';
@@ -1283,12 +1347,16 @@
   async function boot() {
     if (isAuthenticated()) {
       const u = getUser();
-      if (u?.email?.toLowerCase() === 'noreply.synch@gmail.com') {
-        window.location.href = '/admin';
+      if (u && (u.profileComplete === false || u.profile_complete === false)) {
+        clearSession();
+      } else {
+        if (u?.email?.toLowerCase() === 'noreply.synch@gmail.com') {
+          window.location.href = '/admin';
+          return;
+        }
+        window.location.href = '/chat';
         return;
       }
-      window.location.href = '/chat';
-      return;
     }
 
     const params = new URLSearchParams(window.location.search);

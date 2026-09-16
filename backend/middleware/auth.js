@@ -67,6 +67,27 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ error: 'Session revoked', sessionRevoked: true });
     }
 
+    // Incomplete Profile Check (enforce onboarding before accessing main features)
+    if (user.profile_complete === false) {
+      const allowedPaths = [
+        '/api/auth/complete-profile',
+        '/api/auth/set-password',
+        '/api/auth/me',
+        '/api/auth/logout',
+        '/api/users/avatar',
+        '/api/auth/appeal'
+      ];
+      const reqUrl = req.originalUrl?.split('?')[0] || req.path;
+      const isAllowed = allowedPaths.some(p => reqUrl.startsWith(p));
+      if (!isAllowed) {
+        return res.status(403).json({
+          error: 'Profile Incomplete',
+          profileIncomplete: true,
+          message: 'Please complete your profile setup (username and date of birth) before continuing.'
+        });
+      }
+    }
+
     req.user = user;
     req.token = token;
     req.session = session;
@@ -110,6 +131,11 @@ const socketAuth = async (socket, next) => {
     if (!session) {
       socket.user = null;
       return next();
+    }
+
+    if (user.profile_complete === false) {
+      socket.user = null;
+      return next(new Error('Profile Incomplete'));
     }
 
     socket.user = user;

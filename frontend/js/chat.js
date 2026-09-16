@@ -5,6 +5,10 @@ if (!token) {
   window.location.href = '/login';
 }
 
+if (currentUser?.profileComplete === false || currentUser?.profile_complete === false) {
+  window.location.replace('/login');
+}
+
 if (currentUser?.email?.toLowerCase() === 'noreply.synch@gmail.com') {
   window.location.href = '/admin';
 }

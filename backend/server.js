@@ -6,7 +6,8 @@ const cors = require('cors');
 const path = require('path');
 
 const config = require('./config');
-const { initDatabase } = require('./database');
+const { initDatabase, User } = require('./database');
+const jwt = require('jsonwebtoken');
 const { socketAuth, auth } = require('./middleware/auth');
 const socketHandler = require('./sockets/socketHandler');
 const { initEmailService } = require('./services/emailService');
@@ -82,25 +83,38 @@ function getCookie(req, name) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-app.get('/', (req, res) => {
+async function getAuthenticatedUser(req) {
   const token = getCookie(req, 'synch_token');
-  if (token && token !== 'logged_out') {
+  if (!token || token === 'logged_out') return null;
+  try {
+    const decoded = jwt.verify(token, config.JWT_SECRET);
+    if (!decoded || !decoded.userId) return null;
+    const user = await User.findById(decoded.userId);
+    return user || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+app.get('/', async (req, res) => {
+  const user = await getAuthenticatedUser(req);
+  if (user && user.profile_complete !== false) {
     return res.redirect(302, '/chat');
   }
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
-app.get('/login', (req, res) => {
-  const token = getCookie(req, 'synch_token');
-  if (token && token !== 'logged_out') {
+app.get('/login', async (req, res) => {
+  const user = await getAuthenticatedUser(req);
+  if (user && user.profile_complete !== false) {
     return res.redirect(302, '/chat');
   }
   res.sendFile(path.join(__dirname, '../frontend/auth.html'));
 });
 
-app.get('/signup', (req, res) => {
-  const token = getCookie(req, 'synch_token');
-  if (token && token !== 'logged_out') {
+app.get('/signup', async (req, res) => {
+  const user = await getAuthenticatedUser(req);
+  if (user && user.profile_complete !== false) {
     return res.redirect(302, '/chat');
   }
   res.sendFile(path.join(__dirname, '../frontend/auth.html'));
@@ -110,9 +124,13 @@ app.get('/auth', (req, res) => {
   res.redirect(301, '/login');
 });
 
-app.get('/chat', (req, res) => {
+app.get('/chat', async (req, res) => {
   const token = getCookie(req, 'synch_token');
-  if (token === 'logged_out') {
+  if (!token || token === 'logged_out') {
+    return res.redirect(302, '/login');
+  }
+  const user = await getAuthenticatedUser(req);
+  if (!user || user.profile_complete === false) {
     return res.redirect(302, '/login');
   }
   res.sendFile(path.join(__dirname, '../frontend/chat.html'));
