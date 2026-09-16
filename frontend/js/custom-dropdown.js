@@ -61,13 +61,28 @@ function createDropdown(container, { options, value, placeholder = 'Select', onC
   function open() {
     if (isOpen) return;
     isOpen = true;
+
+    const rect = trigger.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow < 160 && rect.top > spaceBelow) {
+      container.classList.add('dropup');
+    } else {
+      container.classList.remove('dropup');
+    }
+
     container.classList.add('open');
     document.addEventListener('click', outsideClick, true);
+
+    const selectedItem = menu.querySelector('.custom-dropdown-item.selected');
+    if (selectedItem) {
+      selectedItem.scrollIntoView({ block: 'nearest' });
+    }
   }
 
   function close() {
     isOpen = false;
     container.classList.remove('open');
+    container.classList.remove('dropup');
     document.removeEventListener('click', outsideClick, true);
   }
 
