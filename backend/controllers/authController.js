@@ -585,6 +585,8 @@ exports.login = async (req, res) => {
     }
     resolveUserDeviceChallenges(user.id, socketIO, 'completed');
 
+    const updatedUser = await User.findById(user.id);
+
     const isComplete = !!updatedUser.profile_complete;
     res.json({
       message: isComplete ? 'Login successful' : 'Please complete your profile setup',
