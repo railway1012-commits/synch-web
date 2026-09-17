@@ -579,7 +579,7 @@
         render2FADevicePrompt(data, remember);
       } catch (err) {
         await hideLoading();
-        showErrorPopup(err.message || 'Failed to resend request');
+        showErrorPopup(err.message || 'We couldn\'t resend the request right now. Please wait a moment and try again.');
         const errEl = document.getElementById('devicePromptErrorMsg');
         if (errEl) errEl.style.display = 'none';
       }
@@ -660,7 +660,7 @@
         render2FADevicePrompt(data, remember);
       } catch (err) {
         await hideLoading();
-        renderError(err.message || 'Failed to send new request');
+        renderError(err.message || 'We couldn\'t send a new request right now. Please try again.');
       }
     });
   }
@@ -761,7 +761,7 @@
         render2FADevicePrompt(data, remember);
       } catch (err) {
         await hideLoading();
-        renderError(err.message || 'Failed to send device request');
+        renderError(err.message || 'We couldn\'t send the prompt to your device. Please try again.');
       }
     });
 
@@ -778,7 +778,7 @@
         render2FAEmailCode(data, remember);
       } catch (err) {
         await hideLoading();
-        renderError(err.message || 'Failed to send verification code');
+        renderError(err.message || 'We couldn\'t send the verification code. Please check your email and try again.');
       }
     });
   }
@@ -843,7 +843,7 @@
         }
       } catch (err) {
         await hideLoading();
-        showErrorPopup(err.message || 'Failed to resend code');
+        showErrorPopup(err.message || 'We couldn\'t resend the verification code right now. Please wait a moment and try again.');
         if (msgEl) msgEl.style.display = 'none';
       }
     });
@@ -1026,7 +1026,7 @@
         }, 1000);
       } catch (err) {
         await hideLoading();
-        showErrorPopup(err.message || 'Failed to resend code');
+        showErrorPopup(err.message || 'We couldn\'t resend the verification code right now. Please wait a moment and try again.');
         if (msgEl) msgEl.style.display = 'none';
       }
     });

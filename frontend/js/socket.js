@@ -62,7 +62,11 @@ function initSocket() {
 
   socket.on('error', (error) => {
     console.error('Socket error:', error);
-    showToast(error.message || 'An error occurred', 'error');
+    const raw = (error && (error.message || error.error)) || '';
+    const msg = typeof getFriendlyError === 'function'
+      ? getFriendlyError(raw)
+      : (raw || 'We encountered an unexpected connection issue. Please refresh or try again.');
+    showToast(msg, 'error');
   });
 
   socket.on('user_banned', (data) => {

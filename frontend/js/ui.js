@@ -78,107 +78,223 @@ function showToast(message, type = 'info') {
 
 // User-friendly error messages mapping
 const FRIENDLY_ERRORS = {
-  // Auth errors
+  // Auth & Account errors
   'Invalid email or password': 'The email or password you entered is incorrect. Please try again.',
-  'Email already in use': 'This email is already registered. Try logging in instead.',
-  'Username already taken': 'This username is not available. Please choose a different one.',
-  'Invalid or expired verification code': 'The code you entered is invalid or has expired. Please request a new one.',
+  'Email already in use': 'An account with this email is already registered. Try signing in instead.',
+  'Email already registered': 'An account with this email is already registered. Please sign in instead.',
+  'Email already registered. Please sign in instead.': 'An account with this email is already registered. Please sign in instead.',
+  'Username already taken': 'This username is already taken. Please choose a different one.',
+  'Invalid or expired verification code': 'The verification code is incorrect or has expired. Please check the code or request a new one.',
   'Invalid or expired code': 'The verification code has expired. Please request a new code.',
-  'Session expired. Please login again.': 'Your session has expired. Please log in again.',
-  'Signup session expired. Please start over.': 'Your signup session has timed out. Please start the registration again.',
-  'Current password is incorrect': 'The current password you entered is wrong. Please try again.',
-  'Password is incorrect': 'The password you entered is incorrect.',
+  'Incorrect or expired verification code': 'The verification code you entered is incorrect or has expired. Please check the code or request a new one.',
+  'Session expired. Please login again.': 'Your session has timed out. Please sign in again.',
+  'Signup session expired. Please start over.': 'Your signup session has timed out. Please start registration again.',
+  'No pending signup session found for this email. Please re-enter your details.': 'Your signup session has expired. Please enter your email to start again.',
   'No pending signup for this email': 'No signup in progress for this email. Please start a new registration.',
+  'Current password is incorrect': 'The current password you entered is incorrect. Please try again.',
+  'Password is incorrect': 'The password you entered is incorrect. Please check your password and try again.',
+  'Password must be at least 6 characters': 'Your password must be at least 6 characters long.',
+  'Password must be at least 8 characters': 'Your password must be at least 8 characters long.',
+  'Email and password are required': 'Please enter both your email address and password.',
+  'Email and verification code are required': 'Please enter both your email address and the 6-digit code.',
+  'Email is required': 'Please enter your email address to continue.',
+  'Email or username is required': 'Please enter your email address or username.',
+  'Identifier is required': 'Please enter your username or email address.',
   'No account found with this email': 'We couldn\'t find an account with this email address.',
-  'User not found': 'This account no longer exists.',
+  'User not found': 'This account could not be found.',
+  'This account is no longer available': 'This account is no longer active or has been removed.',
+  'New user registrations are currently disabled by the administrator.': 'New account registrations are temporarily paused by the administrator.',
+  'Your account has been temporarily frozen by an administrator.': 'Your account has been temporarily restricted by an administrator. Please reach out to support.',
+  'Please complete your profile setup (username and date of birth) before continuing.': 'Please finish setting up your username and birthday before continuing.',
   'Invalid or expired reset code': 'The reset code is invalid or has expired. Please request a new one.',
   'Session expired. Please start over.': 'Your password reset session has expired. Please start over.',
-  'Failed to send email': 'We couldn\'t send the email. Please check your email address and try again.',
+  'Failed to send email': 'We couldn\'t deliver the email. Please check your address and try again.',
   'Failed to send 2FA code': 'We couldn\'t send the verification code. Please try again.',
+  'Failed to send verification email': 'We couldn\'t send the verification email. Please check your address and try again.',
+  'Failed to resend verification email': 'We couldn\'t resend the verification email right now. Please wait a moment and try again.',
   'Login failed': 'We couldn\'t log you in. Please check your credentials and try again.',
-  'Verification failed': 'We couldn\'t verify the code. Please try again.',
-  'Invalid code': 'The code you entered is incorrect. Please check and try again.',
+  'Verification failed': 'We couldn\'t verify the code. Please check your code and try again.',
+  'Invalid code': 'The verification code is incorrect. Please check and try again.',
   'Failed to reset password': 'We couldn\'t reset your password. Please try again.',
-  'Failed to resend': 'We couldn\'t resend the code. Please try again.',
+  'Failed to resend': 'We couldn\'t resend the code right now. Please wait a moment and try again.',
+  'Error checking account': 'We couldn\'t verify this account right now. Please check your connection and try again.',
+  'Error creating account': 'We couldn\'t create your account right now. Please check your details and try again.',
+  'Error sending verification code': 'We couldn\'t send the verification code. Please check your email and try again.',
+  'Error verifying code': 'We couldn\'t verify this code. Please double-check the digits or request a new code.',
+  'Error logging in': 'We couldn\'t sign you in right now. Please check your credentials and try again.',
+  'Error logging out': 'We couldn\'t complete sign-out right now. Please refresh the page.',
 
-  // Chat errors
-  'Chat not found': 'This conversation no longer exists or you don\'t have access to it.',
-  'Cannot create chat with yourself': 'You can\'t start a chat with yourself.',
-  'Chat already exists': 'You already have a conversation with this user.',
-  'Message not found': 'This message no longer exists.',
+  // Chat & Messaging errors
+  'Chat not found': 'This conversation could not be found or you may no longer have access to it.',
+  'Cannot create chat with yourself': 'You can\'t start a conversation with yourself.',
+  'Chat already exists': 'You already have an open conversation with this user.',
+  'Message not found': 'This message is no longer available.',
   'Not authorized': 'You don\'t have permission to perform this action.',
-  'Cannot block yourself': 'You cannot block yourself.',
-  'User is already blocked': 'This user is already blocked.',
-  'User is not blocked': 'This user is not in your blocked list.',
+  'Cannot block yourself': 'You cannot block your own account.',
+  'User is already blocked': 'This user is already on your blocked list.',
+  'User is not blocked': 'This user is not currently blocked.',
+  'Error sending message': 'Your message couldn\'t be sent. Please check your connection and retry.',
+  'Error loading chats': 'We couldn\'t load your conversations. Please pull down or refresh to retry.',
+  'Error loading messages': 'We couldn\'t load recent messages. Please refresh or check your connection.',
+  'Error editing message': 'We couldn\'t save your changes to this message. Please try again.',
+  'Error deleting message': 'We couldn\'t delete this message right now. Please try again.',
+  'Error adding reaction': 'We couldn\'t update your reaction. Please try again.',
+  'Error pinning message': 'We couldn\'t pin this message right now. Please try again.',
+  'Error clearing chat': 'We couldn\'t clear this conversation history. Please try again.',
+  'Error marking messages as read': 'We couldn\'t update read receipts. Please refresh your chat.',
 
-  // File/Media errors
-  'File too large': 'The file is too large. Please choose a smaller file (max 10MB).',
-  'Invalid file type': 'This file type is not supported. Please use JPG, PNG, GIF, or WebP.',
+  // Profile, Settings & Support errors
+  'Error fetching user': 'We couldn\'t load this profile. Please refresh the page.',
+  'Error changing password': 'We couldn\'t update your password. Please verify your current password and try again.',
+  'Error changing username': 'We couldn\'t update your username. Please choose another username.',
+  'Error deleting account': 'We couldn\'t delete your account right now. Please try again later.',
+  'Error fetching sessions': 'We couldn\'t load your active sessions. Please refresh the page.',
+  'Error revoking session': 'We couldn\'t log out of that device. Please try again.',
+  'Error updating 2FA settings': 'We couldn\'t update your security settings. Please try again.',
+  'Error resetting password': 'We couldn\'t reset your password. Please request a new link or code.',
+  'Error updating avatar': 'We couldn\'t update your profile photo. Please try a different image.',
+  'Error updating profile': 'We couldn\'t save your profile changes. Please try again.',
+  'Error blocking user': 'We couldn\'t block this user right now. Please try again.',
+  'Error unblocking user': 'We couldn\'t unblock this user right now. Please try again.',
+  'Error updating settings': 'We couldn\'t save your settings. Please try again.',
+  'Failed to submit report': 'We couldn\'t submit your report right now. Please try again.',
+  'Report reason is required': 'Please select or provide a reason for reporting this user.',
+  'Failed to initiate call': 'We couldn\'t connect the call. The user might be offline or unavailable.',
+
+  // File & Upload errors
+  'File too large': 'This file exceeds the 100MB upload limit. Please select a smaller file.',
+  'File too large. Maximum allowed size is 100MB.': 'This file exceeds the 100MB upload limit. Please select a smaller file.',
+  'Invalid file type': 'This file format is not supported. Please upload an image, audio, video, or document.',
   'No file uploaded': 'Please select a file to upload.',
+  'Upload error': 'We couldn\'t upload your file. Please check your connection and file size, then try again.',
 
-  // Network errors
-  'Failed to fetch': 'Unable to connect to the server. Please check your internet connection.',
-  'NetworkError': 'Network error. Please check your connection and try again.',
-  'Load failed': 'Connection failed. Please check your internet and try again.',
-
-  // Generic errors
-  'Error creating account': 'We couldn\'t create your account. Please try again later.',
-  'Error logging in': 'We couldn\'t log you in. Please try again.',
-  'Request failed': 'Something went wrong. Please try again.',
-  'Error sending message': 'We couldn\'t send your message. Please try again.',
-  'Error loading chats': 'We couldn\'t load your conversations. Please refresh the page.',
-  'Error loading messages': 'We couldn\'t load messages. Please try again.',
+  // Network, Rate Limit & Server errors
+  'Failed to fetch': 'Unable to reach SYNCH. Please check your internet connection and try again.',
+  'NetworkError': 'Network connection issue. Please check your connection and try again.',
+  'Load failed': 'Connection interrupted. Please check your internet and try again.',
+  'Error processing request': 'We ran into a brief hiccup processing your request. Please try again.',
+  'Request failed': 'The server couldn\'t complete this request. Please refresh or try again shortly.',
 };
 
-function getFriendlyError(rawError) {
-  if (!rawError) return 'Something went wrong. Please try again.';
+function getFriendlyError(rawError, status = null, endpoint = '') {
+  // If no error message provided, derive a human, helpful message from status or context
+  if (!rawError) {
+    if (status === 429) {
+      return 'You\'ve made a few too many attempts in a short time. Please wait a moment before trying again.';
+    }
+    if (status === 503) {
+      return 'SYNCH is currently undergoing scheduled maintenance or updates. Please check back shortly.';
+    }
+    if (status === 502 || status === 504) {
+      return 'The server took a little too long to respond. Please give it a few seconds and try again.';
+    }
+    if (status === 500) {
+      return 'We encountered a temporary server hiccup. Please try again in a moment.';
+    }
+    if (status === 401) {
+      return 'Your session has timed out. Please sign in again to continue.';
+    }
+    if (status === 403) {
+      return 'You don\'t have permission to perform this action.';
+    }
+    if (status === 404) {
+      return 'We couldn\'t find the requested information or conversation.';
+    }
+    if (status === 413) {
+      return 'That upload is too large. Please select a file under 100MB.';
+    }
+    if (status === 400) {
+      return 'We couldn\'t process this request with the details provided. Please double-check your input and try again.';
+    }
+    return 'We ran into a brief snag completing this action. Please refresh or try again in a moment.';
+  }
 
-  const errorString = rawError.toString().replace('Error: ', '');
+  const errorString = String(rawError).replace(/^Error:\s*/i, '').trim();
 
-  // Check for exact match
+  // 1. Check for exact match in dictionary
   if (FRIENDLY_ERRORS[errorString]) {
     return FRIENDLY_ERRORS[errorString];
   }
 
-  // Check for partial matches
+  // 2. Check for partial matches in dictionary
+  const lower = errorString.toLowerCase();
   for (const [key, value] of Object.entries(FRIENDLY_ERRORS)) {
-    if (errorString.toLowerCase().includes(key.toLowerCase())) {
+    if (lower.includes(key.toLowerCase())) {
       return value;
     }
   }
 
-  // Check for common patterns
-  if (errorString.includes('fetch') || errorString.includes('network') || errorString.includes('ECONNREFUSED')) {
-    return 'Unable to connect to the server. Please check your internet connection.';
+  // 3. Network & Connection errors
+  if (lower.includes('fetch') || lower.includes('network') || lower.includes('econnrefused') || lower.includes('failed to connect') || lower.includes('load failed')) {
+    return 'Unable to reach SYNCH. Please check your internet connection and try again.';
   }
 
-  if (errorString.includes('timeout') || errorString.includes('ETIMEDOUT')) {
-    return 'The request timed out. Please try again.';
+  // 4. Timeouts
+  if (lower.includes('timeout') || lower.includes('etimedout')) {
+    return 'The request took a little too long to complete. Please check your connection and try again.';
   }
 
-  if (errorString.includes('401') || errorString.includes('Unauthorized')) {
-    return 'Your session has expired. Please log in again.';
+  // 5. Rate limits / Too many requests
+  if (lower.includes('rate limit') || lower.includes('too many') || lower.includes('slow down') || lower.includes('429')) {
+    if (lower.includes('email') || lower.includes('code')) {
+      return 'Too many verification codes requested recently. Please wait a short while before requesting another.';
+    }
+    return 'You\'ve made a few too many attempts. Please wait a moment before trying again.';
   }
 
-  if (errorString.includes('403') || errorString.includes('Forbidden')) {
-    return 'You don\'t have permission to do this.';
+  // 6. Auth / Permissions
+  if (lower.includes('401') || lower.includes('unauthorized') || lower.includes('jwt') || lower.includes('token expired') || lower.includes('session revoked')) {
+    return 'Your session has expired. Please sign in again to continue.';
   }
 
-  if (errorString.includes('404') || errorString.includes('Not found')) {
-    return 'The requested item could not be found.';
+  if (lower.includes('403') || lower.includes('forbidden') || lower.includes('access denied')) {
+    return 'You don\'t have permission to access this. Please sign in with an authorized account.';
   }
 
-  if (errorString.includes('500') || errorString.includes('Internal')) {
-    return 'Server error. Please try again later.';
+  if (lower.includes('404') || lower.includes('not found')) {
+    return 'The requested information or conversation could not be found.';
   }
 
-  // Return original if it's already user-friendly (doesn't look technical)
-  if (!errorString.includes('Error:') && !errorString.includes('_') && errorString.length < 100) {
-    return errorString;
+  // 7. Server & Maintenance
+  if (lower.includes('502') || lower.includes('504') || lower.includes('bad gateway') || lower.includes('gateway timeout')) {
+    return 'The server is temporarily unreachable or restarting. Please refresh in a moment.';
   }
 
-  // Default friendly message
-  return 'Something went wrong. Please try again.';
+  if (lower.includes('503') || lower.includes('maintenance')) {
+    return 'SYNCH is currently undergoing scheduled maintenance. Please check back shortly.';
+  }
+
+  if (lower.includes('500') || lower.includes('internal server')) {
+    return 'We encountered a temporary server hiccup on our end. Please try again in a moment.';
+  }
+
+  // 8. If the error is already a human-readable sentence (not technical code or stack trace),
+  // format it nicely with proper capitalization and punctuation!
+  const isTechnical = /^[A-Z0-9_]+$/.test(errorString) || // e.g. ERR_INVALID_ARG
+                      errorString.includes('at ') || // stack trace
+                      errorString.includes('Cannot read property') ||
+                      errorString.includes('undefined is not') ||
+                      errorString.includes('SyntaxError') ||
+                      errorString.includes('ReferenceError') ||
+                      errorString.includes('TypeError') ||
+                      errorString.length > 200;
+
+  if (!isTechnical && errorString.length > 2) {
+    let cleaned = errorString.charAt(0).toUpperCase() + errorString.slice(1);
+    if (!/[.!?]$/.test(cleaned)) {
+      cleaned += '.';
+    }
+    return cleaned;
+  }
+
+  // 9. Contextual fallback if technical or unhandled
+  if (status && status >= 500) {
+    return 'We ran into a temporary server issue while processing your request. Please try again shortly.';
+  }
+  if (status && status >= 400) {
+    return 'We couldn\'t complete your request with the details provided. Please check your information and try again.';
+  }
+  return 'We ran into a brief snag completing this action. Please refresh or try again in a moment.';
 }
 
 function formatTime(date) {
