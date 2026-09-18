@@ -58,6 +58,14 @@ app.use((req, res, next) => {
 
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// ── Android Release APK Download Route ─────────────────────────────────────────
+app.get(['/downloads/synch.apk', '/downloads/synch-release.apk', '/synch.apk', '/download/app'], (req, res) => {
+  const apkPath = path.join(__dirname, '../frontend/downloads/synch-release.apk');
+  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+  res.download(apkPath, 'synch-release.apk');
+});
+
 app.use(express.static(path.join(__dirname, '../frontend'), {
   index: false,
   setHeaders: (res, filePath) => {
