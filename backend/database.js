@@ -1283,7 +1283,10 @@ const FriendRequest = {
 
   cancel: async (requestId, userId) => {
     const result = await pool.query(
-      `DELETE FROM friend_requests WHERE id = $1 AND sender_id = $2 RETURNING *`,
+      `DELETE FROM friend_requests 
+       WHERE (id = $1 OR (receiver_id = $1 AND status = 'pending')) 
+         AND sender_id = $2 
+       RETURNING *`,
       [requestId, userId]
     );
     return result.rows[0] || null;
