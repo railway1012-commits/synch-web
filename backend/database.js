@@ -472,18 +472,10 @@ const User = {
     const result = await pool.query(
       `SELECT u.id, u.username, u.display_name, u.avatar, u.status, u.last_seen, u.badge
        FROM users u
-       WHERE u.id != $1 AND u.is_deleted = FALSE AND (
-         EXISTS(
-           SELECT 1 FROM chat_participants cp1
-           JOIN chat_participants cp2 ON cp1.chat_id = cp2.chat_id AND cp2.user_id != cp1.user_id
-           JOIN chats c ON cp1.chat_id = c.id AND c.type = 'private'
-           WHERE cp1.user_id = u.id AND cp2.user_id = $1
-         )
-         OR EXISTS(
-           SELECT 1 FROM friend_requests fr
-           WHERE ((fr.sender_id = $1 AND fr.receiver_id = u.id) OR (fr.receiver_id = $1 AND fr.sender_id = u.id))
-             AND fr.status = 'accepted'
-         )
+       WHERE u.id != $1 AND u.is_deleted = FALSE AND EXISTS(
+         SELECT 1 FROM friend_requests fr
+         WHERE ((fr.sender_id = $1 AND fr.receiver_id = u.id) OR (fr.receiver_id = $1 AND fr.sender_id = u.id))
+           AND fr.status = 'accepted'
        )
        ORDER BY u.username ASC`,
       [currentUserId]
@@ -512,10 +504,9 @@ const User = {
               fr.receiver_id as request_receiver_id,
               fr.status as request_status,
               EXISTS(
-                SELECT 1 FROM chat_participants cp1
-                JOIN chat_participants cp2 ON cp1.chat_id = cp2.chat_id AND cp2.user_id != cp1.user_id
-                JOIN chats c ON cp1.chat_id = c.id AND c.type = 'private'
-                WHERE cp1.user_id = u.id AND cp2.user_id = $1
+                SELECT 1 FROM friend_requests fr2
+                WHERE ((fr2.sender_id = $1 AND fr2.receiver_id = u.id) OR (fr2.receiver_id = $1 AND fr2.sender_id = u.id))
+                  AND fr2.status = 'accepted'
               ) as is_friend
        FROM users u
        LEFT JOIN friend_requests fr ON 
@@ -556,10 +547,9 @@ const User = {
               fr.receiver_id as request_receiver_id,
               fr.status as request_status,
               EXISTS(
-                SELECT 1 FROM chat_participants cp1
-                JOIN chat_participants cp2 ON cp1.chat_id = cp2.chat_id AND cp2.user_id != cp1.user_id
-                JOIN chats c ON cp1.chat_id = c.id AND c.type = 'private'
-                WHERE cp1.user_id = u.id AND cp2.user_id = $2
+                SELECT 1 FROM friend_requests fr2
+                WHERE ((fr2.sender_id = $2 AND fr2.receiver_id = u.id) OR (fr2.receiver_id = $2 AND fr2.sender_id = u.id))
+                  AND fr2.status = 'accepted'
               ) as is_friend
        FROM users u
        LEFT JOIN friend_requests fr ON 

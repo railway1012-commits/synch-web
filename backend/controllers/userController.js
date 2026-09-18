@@ -117,13 +117,21 @@ exports.updateSettings = async (req, res) => {
 exports.blockUser = async (req, res) => {
   try {
     const { userId } = req.params;
+    const targetId = parseInt(userId);
 
-    const userToBlock = await User.findById(parseInt(userId));
+    const userToBlock = await User.findById(targetId);
     if (!userToBlock) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    await User.blockUser(req.user.id, parseInt(userId));
+    await User.blockUser(req.user.id, targetId);
+    await FriendRequest.removeFriendship(req.user.id, targetId);
+
+    if (io) {
+      io.to(`user:${targetId}`).emit('friend:removed', { userId: req.user.id });
+      io.to(`user:${req.user.id}`).emit('friend:removed', { userId: targetId });
+      io.to(`user:${req.user.id}`).emit('user:blocked', { userId: targetId });
+    }
 
     res.json({ message: 'User blocked successfully' });
   } catch (error) {

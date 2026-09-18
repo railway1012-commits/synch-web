@@ -1388,8 +1388,14 @@ exports.checkDevicePrompt = async (req, res) => {
       return res.status(404).json({ error: 'Challenge not found', status: 'not_found' });
     }
 
+    if (challenge.status === 'cancelled') {
+      setTimeout(() => deviceChallenges.delete(challengeId), 30000);
+      return res.json({ status: 'cancelled', error: 'This sign-in request was cancelled.' });
+    }
+
     if (Date.now() > challenge.expiresAt) {
       challenge.status = 'expired';
+      setTimeout(() => deviceChallenges.delete(challengeId), 30000);
       return res.json({ status: 'expired', error: 'This sign-in request has expired.' });
     }
 
@@ -1399,12 +1405,13 @@ exports.checkDevicePrompt = async (req, res) => {
         token: challenge.token,
         user: challenge.user
       };
-      deviceChallenges.delete(challengeId);
+      // Keep for 60s to prevent race condition 404s on rapid polling
+      setTimeout(() => deviceChallenges.delete(challengeId), 60000);
       return res.json(responseData);
     }
 
     if (challenge.status === 'declined') {
-      deviceChallenges.delete(challengeId);
+      setTimeout(() => deviceChallenges.delete(challengeId), 60000);
       return res.json({
         status: 'declined',
         error: 'Sign-in request was declined from your active device.'
@@ -1420,19 +1427,40 @@ exports.checkDevicePrompt = async (req, res) => {
 
 exports.cancelDevicePrompt = async (req, res) => {
   try {
-    const { challengeId } = req.body;
+    const { challengeId, identifier, email } = req.body;
+    const socketIO = req.app?.get('io') || io;
+
     if (challengeId && deviceChallenges.has(challengeId)) {
       const challenge = deviceChallenges.get(challengeId);
       challenge.status = 'cancelled';
-      deviceChallenges.delete(challengeId);
-      const socketIO = req.app?.get('io') || io;
       if (socketIO && challenge.userId) {
         socketIO.to(`user:${challenge.userId}`).emit('auth:device_prompt_resolved', {
           challengeId,
           status: 'cancelled'
         });
       }
+      setTimeout(() => deviceChallenges.delete(challengeId), 30000);
     }
+
+    const searchId = (identifier || email || '').trim();
+    if (searchId) {
+      const user = await User.findByIdentifier(searchId);
+      if (user) {
+        for (const [cid, chal] of deviceChallenges.entries()) {
+          if (chal.userId === user.id) {
+            chal.status = 'cancelled';
+            if (socketIO) {
+              socketIO.to(`user:${user.id}`).emit('auth:device_prompt_resolved', {
+                challengeId: cid,
+                status: 'cancelled'
+              });
+            }
+            setTimeout(() => deviceChallenges.delete(cid), 30000);
+          }
+        }
+      }
+    }
+
     res.json({ success: true });
   } catch (error) {
     console.error('Cancel device prompt error:', error);
@@ -1539,6 +1567,21 @@ exports.send2FAEmailCode = async (req, res) => {
 
     const code = await VerificationCode.create(user.email, user.id, 'login');
     pending2FA.set(user.email, { userId: user.id, expiresAt: Date.now() + 10 * 60 * 1000 });
+
+    // When switching to email OTP ("Try another way"), dismiss any active device prompt on user's devices
+    const socketIO = req.app?.get('io') || io;
+    for (const [cid, chal] of deviceChallenges.entries()) {
+      if (chal.userId === user.id) {
+        chal.status = 'cancelled';
+        if (socketIO) {
+          socketIO.to(`user:${user.id}`).emit('auth:device_prompt_resolved', {
+            challengeId: cid,
+            status: 'cancelled'
+          });
+        }
+        setTimeout(() => deviceChallenges.delete(cid), 30000);
+      }
+    }
 
     const emailSent = await sendVerificationEmail(user.email, code);
     if (!emailSent) {
