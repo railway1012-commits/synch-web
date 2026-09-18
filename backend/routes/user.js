@@ -7,6 +7,8 @@ const upload = require('../middleware/upload');
 router.use(auth);
 
 router.get('/', userController.getUsers);
+router.get('/friends', userController.getFriends);
+router.delete('/friends/:friendId', userController.removeFriend);
 router.get('/friend-requests/incoming', userController.getIncomingRequests);
 router.get('/friend-requests/outgoing', userController.getOutgoingRequests);
 router.post('/friend-requests', userController.sendFriendRequest);

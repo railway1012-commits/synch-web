@@ -18,6 +18,36 @@ exports.getUsers = async (req, res) => {
   }
 };
 
+exports.getFriends = async (req, res) => {
+  try {
+    const friends = await User.getFriends(req.user.id);
+    res.json({ friends });
+  } catch (error) {
+    console.error('Get friends error:', error);
+    res.status(500).json({ error: 'Error fetching friends' });
+  }
+};
+
+exports.removeFriend = async (req, res) => {
+  try {
+    const friendId = parseInt(req.params.friendId);
+    if (!friendId) {
+      return res.status(400).json({ error: 'Invalid friend ID' });
+    }
+    await FriendRequest.removeFriendship(req.user.id, friendId);
+
+    if (io) {
+      io.to(`user:${friendId}`).emit('friend:removed', { userId: req.user.id });
+      io.to(`user:${req.user.id}`).emit('friend:removed', { userId: friendId });
+    }
+
+    res.json({ message: 'Friend removed successfully' });
+  } catch (error) {
+    console.error('Remove friend error:', error);
+    res.status(500).json({ error: 'Error removing friend' });
+  }
+};
+
 exports.getUser = async (req, res) => {
   try {
     const user = await User.findByIdWithFriendStatus(parseInt(req.params.userId), req.user.id);
