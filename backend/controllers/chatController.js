@@ -1,4 +1,4 @@
-const { Chat, Message, User, pool } = require('../database');
+const { Chat, Message, User, FriendRequest, pool } = require('../database');
 const config = require('../config');
 
 
@@ -9,14 +9,42 @@ exports.setIO = (socketIO) => {
 
 exports.getChats = async (req, res) => {
   try {
-    const chats = (await Chat.findByUserId(req.user.id)).map(chat => ({
-      _id: chat.id,
-      type: chat.type,
-      name: chat.name,
-      participants: chat.participants,
-      lastMessage: chat.lastMessage,
-      unreadCount: chat.unreadCount || 0,
-      updatedAt: chat.updated_at
+    const rawChats = await Chat.findByUserId(req.user.id);
+    const myBlocked = (req.user.blocked_users || []).map(Number);
+
+    const chats = await Promise.all(rawChats.map(async chat => {
+      let isBlocked = false;
+      let isBlockedByMe = false;
+      let isFriend = true;
+      let pendingUnanswered = 0;
+
+      if (chat.type === 'private' && chat.participants?.length) {
+        const other = chat.participants.find(p => parseInt(p.id || p._id) !== parseInt(req.user.id));
+        if (other) {
+          const otherId = parseInt(other.id || other._id);
+          isBlockedByMe = myBlocked.includes(otherId);
+          isBlocked = await User.isBlockedBetween(req.user.id, otherId);
+          isFriend = await FriendRequest.isFriend(req.user.id, otherId);
+          if (!isFriend) {
+            pendingUnanswered = await Message.countPendingUnanswered(chat.id, req.user.id, otherId);
+          }
+        }
+      }
+
+      return {
+        _id: chat.id,
+        id: chat.id,
+        type: chat.type,
+        name: chat.name,
+        participants: chat.participants,
+        lastMessage: chat.lastMessage,
+        unreadCount: chat.unreadCount || 0,
+        updatedAt: chat.updated_at,
+        isBlocked,
+        isBlockedByMe,
+        isFriend,
+        pendingUnanswered
+      };
     }));
 
     res.json({ chats });
@@ -34,13 +62,37 @@ exports.getChat = async (req, res) => {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
+    let isBlocked = false;
+    let isBlockedByMe = false;
+    let isFriend = true;
+    let pendingUnanswered = 0;
+
+    if (chat.type === 'private' && chat.participants?.length) {
+      const myBlocked = (req.user.blocked_users || []).map(Number);
+      const other = chat.participants.find(p => parseInt(p.id || p._id) !== parseInt(req.user.id));
+      if (other) {
+        const otherId = parseInt(other.id || other._id);
+        isBlockedByMe = myBlocked.includes(otherId);
+        isBlocked = await User.isBlockedBetween(req.user.id, otherId);
+        isFriend = await FriendRequest.isFriend(req.user.id, otherId);
+        if (!isFriend) {
+          pendingUnanswered = await Message.countPendingUnanswered(chat.id, req.user.id, otherId);
+        }
+      }
+    }
+
     res.json({
       chat: {
         _id: chat.id,
+        id: chat.id,
         type: chat.type,
         name: chat.name,
         participants: chat.participants,
-        updatedAt: chat.updated_at
+        updatedAt: chat.updated_at,
+        isBlocked,
+        isBlockedByMe,
+        isFriend,
+        pendingUnanswered
       }
     });
   } catch (error) {

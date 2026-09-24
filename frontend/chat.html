@@ -468,6 +468,32 @@
           </div>
 
           <div class="message-input-container">
+            <!-- Message Request Intro Banner -->
+            <div id="messageRequestIntroBanner" class="chat-restriction-banner intro" style="display: none;">
+              <div class="restriction-banner-content">
+                <span>Not in your contacts. You can send 1 message to introduce yourself.</span>
+              </div>
+            </div>
+
+            <!-- Blocked Chat Banner -->
+            <div id="blockedChatBanner" class="chat-restriction-banner blocked" style="display: none;">
+              <div class="restriction-banner-content">
+                <span id="blockedBannerText" style="font-weight: 600;">You blocked this user</span>
+                <div class="restriction-banner-actions">
+                  <button type="button" class="btn btn-sm btn-primary" id="unblockChatBtn">Unblock</button>
+                  <button type="button" class="btn btn-sm btn-danger" id="deleteChatFromBannerBtn">Delete Chat</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Message Request Waiting Banner -->
+            <div id="messageRequestWaitingBanner" class="chat-restriction-banner pending" style="display: none;">
+              <div class="restriction-banner-content">
+                <strong style="color: var(--text-primary); font-size: 14px;">Message request sent</strong>
+                <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 12.5px;">You can send more messages once they reply or accept your friend request.</p>
+              </div>
+            </div>
+
             <div class="reply-preview" id="replyPreview">
               <div class="reply-preview-content">
                 <div class="reply-preview-name" id="replyName">Replying to</div>

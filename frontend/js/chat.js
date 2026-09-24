@@ -555,6 +555,144 @@ function renderChatList(searchQuery = '') {
 
 elements.searchChats?.addEventListener('input', (e) => renderChatList(e.target.value));
 
+function updateChatRestrictions(chat) {
+  if (!chat) return;
+  const myId = currentUser ? (currentUser._id || currentUser.id) : null;
+  const otherParticipant = chat.participants?.find(p => {
+    const pId = p._id || p.id;
+    return myId ? String(pId) !== String(myId) : true;
+  });
+
+  const isBlockedByMe = chat.isBlockedByMe === true;
+  const isBlocked = chat.isBlocked === true || isBlockedByMe;
+  const isFriend = chat.type === 'group' ? true : (chat.isFriend !== false);
+
+  // Header call buttons
+  const startVoiceCallBtn = document.getElementById('startVoiceCallBtn');
+  const startVideoCallBtn = document.getElementById('startVideoCallBtn');
+  if (startVoiceCallBtn) startVoiceCallBtn.style.display = (isBlocked || !isFriend || chat.type === 'group') ? 'none' : 'inline-flex';
+  if (startVideoCallBtn) startVideoCallBtn.style.display = (isBlocked || !isFriend || chat.type === 'group') ? 'none' : 'inline-flex';
+
+  // Attachments (non-friends can only send text and voice notes)
+  const attachImage = document.getElementById('attachImage');
+  const attachDoc = document.getElementById('attachDoc');
+  if (attachImage) attachImage.style.display = (!isFriend && chat.type !== 'group') ? 'none' : 'inline-flex';
+  if (attachDoc) attachDoc.style.display = (!isFriend && chat.type !== 'group') ? 'none' : 'inline-flex';
+
+  // Compute message request state
+  let mySentCount = 0;
+  let otherReplyCount = 0;
+  if (Array.isArray(messages)) {
+    for (const m of messages) {
+      const sId = String(m.sender?._id || m.senderId || m.sender);
+      if (sId === String(myId)) mySentCount++;
+      else otherReplyCount++;
+    }
+  }
+  const isMessageRequestWaiting = (!isFriend && chat.type !== 'group' && mySentCount >= 1 && otherReplyCount === 0);
+
+  const inputWrapper = document.querySelector('.message-input-wrapper');
+  const blockedBanner = document.getElementById('blockedChatBanner');
+  const waitingBanner = document.getElementById('messageRequestWaitingBanner');
+  const introBanner = document.getElementById('messageRequestIntroBanner');
+  const blockedText = document.getElementById('blockedBannerText');
+  const unblockBtn = document.getElementById('unblockChatBtn');
+  const deleteBtn = document.getElementById('deleteChatFromBannerBtn');
+
+  if (isBlocked) {
+    if (inputWrapper) inputWrapper.style.display = 'none';
+    if (waitingBanner) waitingBanner.style.display = 'none';
+    if (introBanner) introBanner.style.display = 'none';
+    if (blockedBanner) {
+      blockedBanner.style.display = 'block';
+      if (isBlockedByMe) {
+        if (blockedText) blockedText.textContent = 'You blocked this contact';
+        if (unblockBtn) {
+          unblockBtn.style.display = 'inline-flex';
+          unblockBtn.onclick = () => window.unblockUserFromChat(otherParticipant?._id || otherParticipant?.id);
+        }
+      } else {
+        if (blockedText) blockedText.textContent = 'You cannot message this user';
+        if (unblockBtn) unblockBtn.style.display = 'none';
+      }
+      if (deleteBtn) {
+        deleteBtn.onclick = () => deleteChat(chat._id);
+      }
+    }
+  } else if (isMessageRequestWaiting) {
+    if (inputWrapper) inputWrapper.style.display = 'none';
+    if (blockedBanner) blockedBanner.style.display = 'none';
+    if (introBanner) introBanner.style.display = 'none';
+    if (waitingBanner) waitingBanner.style.display = 'block';
+  } else {
+    if (blockedBanner) blockedBanner.style.display = 'none';
+    if (waitingBanner) waitingBanner.style.display = 'none';
+    if (inputWrapper) inputWrapper.style.display = 'flex';
+    if (introBanner) {
+      introBanner.style.display = (!isFriend && chat.type !== 'group' && mySentCount === 0) ? 'block' : 'none';
+    }
+  }
+}
+
+window.unblockUserFromChat = async function(userId) {
+  try {
+    await fetchAPI(`/api/users/${userId}/block`, { method: 'DELETE' });
+    showToast('Contact unblocked', 'success');
+    if (currentChat) {
+      currentChat.isBlocked = false;
+      currentChat.isBlockedByMe = false;
+      updateChatRestrictions(currentChat);
+    }
+    loadChats();
+    loadBlockedUsers();
+  } catch (e) {
+    showToast(getFriendlyError(e.message), 'error');
+  }
+};
+
+window.unblockFromSearch = async function(userId) {
+  try {
+    await fetchAPI(`/api/users/${userId}/block`, { method: 'DELETE' });
+    showToast('User unblocked', 'success');
+    const searchInput = document.getElementById('searchUsers');
+    loadDiscoverUsers(searchInput ? searchInput.value : '');
+    loadBlockedUsers();
+    loadChats();
+  } catch (e) {
+    showToast(getFriendlyError(e.message), 'error');
+  }
+};
+
+window.unblockFromProfile = async function(userId) {
+  try {
+    await fetchAPI(`/api/users/${userId}/block`, { method: 'DELETE' });
+    showToast('User unblocked', 'success');
+    previewUserProfile(userId);
+    loadBlockedUsers();
+    loadChats();
+  } catch (e) {
+    showToast(getFriendlyError(e.message), 'error');
+  }
+};
+
+async function deleteChat(chatId) {
+  const confirmed = await showConfirm('Delete Chat', 'Are you sure you want to delete this chat?', 'Delete', true);
+  if (!confirmed) return;
+  try {
+    await fetchAPI(`/api/chats/${chatId}`, { method: 'DELETE' });
+    messageCache.delete(String(chatId));
+    persistMessageCache();
+    if (currentChat && String(currentChat._id) === String(chatId)) {
+      document.getElementById('backToChatsBtn')?.click();
+    }
+    await loadChats();
+    showToast('Chat deleted', 'success');
+  } catch (e) {
+    showToast(getFriendlyError(e.message), 'error');
+  }
+}
+window.deleteChat = deleteChat;
+
 async function selectChat(chatId) {
   const numericId = parseInt(chatId);
   const chat = chats.find(c => c._id === numericId || c._id === chatId);
@@ -598,6 +736,7 @@ async function selectChat(chatId) {
   elements.chatView.style.display = 'flex';
   document.querySelector('.chat-app').classList.add('chat-open');
   renderChatList(elements.searchChats ? elements.searchChats.value : '');
+  updateChatRestrictions(chat);
   await loadMessages();
   startLiveChatSync();
 }
@@ -616,6 +755,7 @@ async function loadMessages() {
     messages = [...cachedMessages];
     renderMessages();
     scrollToBottom();
+    updateChatRestrictions(currentChat);
 
     // Mark unread messages in cache as read
     const unreadIds = messages
@@ -645,6 +785,7 @@ async function loadMessages() {
         renderMessages();
         scrollToBottom();
       }
+      updateChatRestrictions(currentChat);
 
       // Mark unread messages as read upon fresh load
       const unreadIds = freshMessages
@@ -1165,9 +1306,12 @@ async function loadDiscoverUsers(search = '') {
       const handle = `@${u.username}`;
 
       let actionsHtml = '';
+      const isBlockedUser = u.isBlocked || u.isBlockedByMe || u.friendStatus === 'blocked';
       if (isSearching) {
         let mainBtn = '';
-        if (u.friendStatus === 'friends') {
+        if (isBlockedUser) {
+          mainBtn = `<button class="btn btn-sm btn-secondary" onclick="unblockFromSearch('${u._id}')">Unblock</button>`;
+        } else if (u.friendStatus === 'friends') {
           mainBtn = `<button class="btn btn-sm btn-primary" onclick="startNewChat('${u._id}')">Message</button>`;
         } else if (u.friendStatus === 'pending_outgoing') {
           mainBtn = `<span class="btn-action-requested">Requested</span>`;
@@ -1183,7 +1327,9 @@ async function loadDiscoverUsers(search = '') {
         `;
       } else {
         let mainBtn = '';
-        if (u.friendStatus === 'friends') {
+        if (isBlockedUser) {
+          mainBtn = `<button class="btn btn-sm btn-secondary" onclick="unblockFromSearch('${u._id}')">Unblock</button>`;
+        } else if (u.friendStatus === 'friends') {
           mainBtn = `<button class="btn btn-sm btn-primary" onclick="startNewChat('${u._id}')">Message</button>`;
         } else if (u.friendStatus === 'pending_outgoing') {
           mainBtn = `<span class="btn-action-requested">Requested</span>`;
@@ -1490,12 +1636,40 @@ function populateProfileModal({ user, isFriends = false, friendStatus = 'none', 
   const toolbar = document.getElementById('userInfoActionsToolbar');
 
   const effectiveIsFriends = isFriends || (friendStatus === 'friends');
+  const isBlockedUser = user.isBlocked || user.isBlockedByMe || (friendStatus === 'blocked');
 
   if (isUnavailable) {
     if (strangerNotice) strangerNotice.style.display = 'none';
     if (nicknameGroup) nicknameGroup.style.display = 'none';
     if (saveNicknameBtn) saveNicknameBtn.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
+  } else if (isBlockedUser) {
+    if (statusEl) {
+      statusEl.textContent = 'Blocked';
+      statusEl.style.color = '#ef4444';
+    }
+    if (strangerNotice) strangerNotice.style.display = 'none';
+    if (nicknameGroup) nicknameGroup.style.display = 'none';
+    if (saveNicknameBtn) saveNicknameBtn.style.display = 'none';
+    if (toolbar) {
+      toolbar.style.display = 'grid';
+      toolbar.className = 'profile-actions-toolbar';
+      toolbar.innerHTML = `
+        <button class="profile-tool-btn danger" onclick="unblockFromProfile('${user._id}')" title="Unblock User">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+          </svg>
+          <span>Unblock</span>
+        </button>
+        <button class="profile-tool-btn" onclick="onProfileReportClick()" title="Report User" style="color: var(--warning, #f59e0b);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+            <line x1="4" y1="22" x2="4" y2="15"/>
+          </svg>
+          <span>Report</span>
+        </button>
+      `;
+    }
   } else if (effectiveIsFriends) {
     if (strangerNotice) strangerNotice.style.display = 'none';
     if (nicknameGroup) nicknameGroup.style.display = 'block';
@@ -1588,7 +1762,13 @@ function populateProfileModal({ user, isFriends = false, friendStatus = 'none', 
         // 'none'
         toolbar.className = 'profile-actions-toolbar grid-2';
         toolbar.innerHTML = `
-          <button class="profile-tool-btn primary" onclick="sendFriendReqFromProfile('${user._id}')" title="Send Friend Request">
+          <button class="profile-tool-btn primary" onclick="onProfileMessageClick('${user._id}')" title="Direct Message">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span>Message</span>
+          </button>
+          <button class="profile-tool-btn secondary" onclick="sendFriendReqFromProfile('${user._id}')" title="Send Friend Request">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
             </svg>
@@ -3104,7 +3284,41 @@ function onNewMessage(message) {
     if (!isSender) {
       markMessagesAsRead([message._id], currentChat._id);
     }
+    updateChatRestrictions(currentChat);
   }
+
+function onUserBlockedEvent(data) {
+  loadBlockedUsers();
+  loadChats();
+  const targetId = String(data?.targetUserId || data?.userId);
+  if (currentChat && currentChat.participants) {
+    const other = currentChat.participants.find(p => String(p._id || p.id) === targetId);
+    if (other) {
+      currentChat.isBlocked = true;
+      if (String(data.userId) === String(currentUser._id || currentUser.id)) {
+        currentChat.isBlockedByMe = true;
+      }
+      updateChatRestrictions(currentChat);
+    }
+  }
+}
+
+function onUserUnblockedEvent(data) {
+  loadBlockedUsers();
+  loadChats();
+  const targetId = String(data?.targetUserId || data?.userId);
+  if (currentChat && currentChat.participants) {
+    const other = currentChat.participants.find(p => String(p._id || p.id) === targetId);
+    if (other) {
+      currentChat.isBlocked = false;
+      currentChat.isBlockedByMe = false;
+      updateChatRestrictions(currentChat);
+    }
+  }
+}
+
+window.onUserBlockedEvent = onUserBlockedEvent;
+window.onUserUnblockedEvent = onUserUnblockedEvent;
 
   // Also update message cache for this chat
   if (msgChatIdStr) {

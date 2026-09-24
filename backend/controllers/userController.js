@@ -166,7 +166,7 @@ exports.getBlockedUsers = async (req, res) => {
       avatar: u.avatar
     }));
 
-    res.json({ blockedUsers });
+    res.json({ blockedUsers, blocked: blockedUsers });
   } catch (error) {
     res.status(500).json({ error: 'Error fetching blocked users' });
   }

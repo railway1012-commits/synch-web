@@ -5,6 +5,19 @@ const activeCalls = new Map();
 
 module.exports = (io) => {
   io.on('connection', async (socket) => {
+    // Allow guest or authenticated sockets to join QR session rooms for instant web pairing
+    socket.on('qr:subscribe', (data) => {
+      if (data?.qrCode) {
+        socket.join(`qr:${data.qrCode}`);
+      }
+    });
+
+    socket.on('qr:unsubscribe', (data) => {
+      if (data?.qrCode) {
+        socket.leave(`qr:${data.qrCode}`);
+      }
+    });
+
     const user = socket.user;
     if (!user) {
       // Guest socket for public announcements and live maintenance signals

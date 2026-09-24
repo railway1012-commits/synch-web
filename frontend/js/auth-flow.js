@@ -212,14 +212,162 @@
     showErrorPopup(msg);
   }
 
+  let qrPollTimer = null;
+  let activeQRSubscription = null;
+
+  function stopQRPairing() {
+    if (qrPollTimer) {
+      clearInterval(qrPollTimer);
+      qrPollTimer = null;
+    }
+    if (activeQRSubscription) {
+      const socket = window.socket || (typeof io !== 'undefined' ? io() : null);
+      if (socket) {
+        socket.emit('qr:unsubscribe', { qrCode: activeQRSubscription });
+      }
+      activeQRSubscription = null;
+    }
+  }
+
+  async function renderQRLink() {
+    flow.step = 'qr';
+    flow.tab = 'qr';
+    stopQRPairing();
+    triggerStepAnimation();
+
+    stepEl.innerHTML = `
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab ${flow.tab === 'signin' ? 'active' : ''}" data-tab="signin">Sign In</button>
+        <button type="button" class="auth-tab ${flow.tab === 'signup' ? 'active' : ''}" data-tab="signup">Sign Up</button>
+        <button type="button" class="auth-tab ${flow.tab === 'qr' ? 'active' : ''}" data-tab="qr">Link Device</button>
+      </div>
+
+      <div class="qr-pairing-box" style="text-align: center; margin-top: 6px;">
+        <h3 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 6px; color: var(--text-primary);">Link with SYNCH App</h3>
+        <p style="color: var(--text-secondary); font-size: 13px; line-height: 1.5; margin-bottom: 20px;">
+          Log into your account without entering your password using your mobile phone.
+        </p>
+
+        <div id="qrCodeCard" style="background: #ffffff; padding: 16px; border-radius: 20px; display: inline-flex; align-items: center; justify-content: center; min-width: 220px; min-height: 220px; box-shadow: 0 12px 30px rgba(0,0,0,0.35); position: relative; margin-bottom: 20px;">
+          <div class="auth-spinner" style="border-top-color: #0084ff; border-left-color: #0084ff;"></div>
+        </div>
+
+        <div style="text-align: left; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 16px; padding: 14px 18px; margin-bottom: 20px;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <span style="background: var(--accent); color: white; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;">1</span>
+            <span style="font-size: 13px; color: var(--text-primary); font-weight: 500;">Open SYNCH on your phone</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+            <span style="background: var(--accent); color: white; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;">2</span>
+            <span style="font-size: 13px; color: var(--text-primary); font-weight: 500;">Go to <strong>Settings ⚙️</strong> &gt; <strong>Linked devices</strong></span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="background: var(--accent); color: white; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;">3</span>
+            <span style="font-size: 13px; color: var(--text-primary); font-weight: 500;">Tap <strong>Link a device</strong> and scan this QR code</span>
+          </div>
+        </div>
+
+        <div id="qrStatusPill" style="display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); background: rgba(255,255,255,0.05); padding: 6px 14px; border-radius: 20px;">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e;"></span>
+          <span id="qrStatusText">Waiting for scan...</span>
+        </div>
+      </div>
+    `;
+
+    stepEl.querySelectorAll('.auth-tab').forEach(t => {
+      t.addEventListener('click', () => {
+        stopQRPairing();
+        flow.tab = t.dataset.tab;
+        if (flow.tab === 'qr') {
+          renderQRLink();
+        } else {
+          renderEntry();
+        }
+      });
+    });
+
+    try {
+      const res = await apiRequest('/api/auth/qr/start', { method: 'POST' });
+      const qrCode = res.qrCode;
+      activeQRSubscription = qrCode;
+
+      const qrCard = document.getElementById('qrCodeCard');
+      if (qrCard) {
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=${encodeURIComponent(qrCode)}`;
+        const img = new Image();
+        img.src = qrUrl;
+        img.alt = "SYNCH Pairing QR";
+        img.style.width = '200px';
+        img.style.height = '200px';
+        img.style.borderRadius = '8px';
+        img.onload = () => {
+          if (flow.step === 'qr') {
+            qrCard.innerHTML = '';
+            qrCard.appendChild(img);
+          }
+        };
+        img.onerror = () => {
+          qrCard.innerHTML = `<div style="color: #000; font-size: 12px; padding: 20px; word-break: break-all;"><strong>${escapeHtml(qrCode)}</strong><br><br>Scan from SYNCH Linked Devices</div>`;
+        };
+      }
+
+      // 1. Socket real-time listener
+      const socket = window.socket || (typeof io !== 'undefined' ? io() : null);
+      if (socket) {
+        socket.emit('qr:subscribe', { qrCode });
+        socket.off('qr:approved');
+        socket.on('qr:approved', (data) => {
+          stopQRPairing();
+          const pill = document.getElementById('qrStatusText');
+          if (pill) pill.textContent = 'Approved! Logging in...';
+          handleAuthSuccess(data, true);
+        });
+      }
+
+      // 2. Fallback polling every 2s
+      qrPollTimer = setInterval(async () => {
+        if (flow.step !== 'qr') {
+          stopQRPairing();
+          return;
+        }
+        try {
+          const check = await apiRequest(`/api/auth/qr/status/${qrCode}`);
+          if (check.status === 'approved') {
+            stopQRPairing();
+            const pill = document.getElementById('qrStatusText');
+            if (pill) pill.textContent = 'Approved! Logging in...';
+            handleAuthSuccess(check, true);
+          } else if (check.status === 'expired') {
+            stopQRPairing();
+            const pill = document.getElementById('qrStatusText');
+            if (pill) pill.textContent = 'QR code expired. Click to refresh.';
+            const qrCard = document.getElementById('qrCodeCard');
+            if (qrCard) {
+              qrCard.style.cursor = 'pointer';
+              qrCard.onclick = () => renderQRLink();
+            }
+          }
+        } catch (e) {}
+      }, 2000);
+
+    } catch (err) {
+      const qrCard = document.getElementById('qrCodeCard');
+      if (qrCard) {
+        qrCard.innerHTML = `<p style="color: var(--danger); font-size: 12px;">Failed to initialize QR code. Please try again.</p>`;
+      }
+    }
+  }
+
   // ---------- Step: Entry (tabs + identifier + google) ----------
   function renderEntry() {
     flow.step = 'entry';
+    stopQRPairing();
     triggerStepAnimation();
     stepEl.innerHTML = `
       <div class="auth-tabs">
         <button type="button" class="auth-tab ${flow.tab === 'signin' ? 'active' : ''}" data-tab="signin">Sign In</button>
         <button type="button" class="auth-tab ${flow.tab === 'signup' ? 'active' : ''}" data-tab="signup">Sign Up</button>
+        <button type="button" class="auth-tab ${flow.tab === 'qr' ? 'active' : ''}" data-tab="qr">Link Device</button>
       </div>
       <p class="auth-entry-subtext">${flow.tab === 'signup' ? 'Create an account to start chatting with your people, on your terms.' : 'Welcome back — sign in to pick up where you left off.'}</p>
       <form id="entryForm" class="auth-form">
@@ -235,8 +383,13 @@
 
     stepEl.querySelectorAll('.auth-tab').forEach(t => {
       t.addEventListener('click', () => {
+        stopQRPairing();
         flow.tab = t.dataset.tab;
-        renderEntry();
+        if (flow.tab === 'qr') {
+          renderQRLink();
+        } else {
+          renderEntry();
+        }
       });
     });
 

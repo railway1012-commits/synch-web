@@ -4400,5 +4400,44 @@ select:focus-visible {
   }
 }
 
-
-
+/* Chat Restriction Banners (Blocked, Message Request) */
+.chat-restriction-banner {
+  padding: 16px 20px;
+  background: var(--bg-tertiary, #162032);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  text-align: center;
+  border-radius: var(--radius-lg, 16px);
+  margin: 10px 16px 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  animation: fadeIn 0.25s ease-out;
+}
+.chat-restriction-banner.blocked {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+.chat-restriction-banner.pending {
+  background: var(--bg-secondary, #101726);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+}
+.chat-restriction-banner.intro {
+  background: rgba(0, 132, 255, 0.08);
+  border: 1px solid rgba(0, 132, 255, 0.25);
+  color: var(--accent, #0084ff);
+  padding: 10px 16px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.restriction-banner-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.restriction-banner-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 10px;
+}

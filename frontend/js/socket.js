@@ -246,6 +246,18 @@ function initSocket() {
     }
   });
 
+  socket.on('user:blocked', (data) => {
+    if (typeof onUserBlockedEvent === 'function') {
+      onUserBlockedEvent(data);
+    }
+  });
+
+  socket.on('user:unblocked', (data) => {
+    if (typeof onUserUnblockedEvent === 'function') {
+      onUserUnblockedEvent(data);
+    }
+  });
+
   socket.on('auth:device_prompt', (data) => {
     if (typeof onDevicePromptReceived === 'function') {
       onDevicePromptReceived(data);

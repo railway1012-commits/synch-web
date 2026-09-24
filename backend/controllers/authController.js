@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 const { pool, User, Session, VerificationCode } = require('../database');
 const config = require('../config');
@@ -1666,6 +1667,129 @@ exports.getBanAppealStatus = async (req, res) => {
     res.status(500).json({ error: 'Failed to retrieve appeal status' });
   }
 };
+
+// ----------------------------------------------------
+// QR Code Linking (WhatsApp Web Style)
+// ----------------------------------------------------
+const activeQRSessions = new Map();
+
+// Periodic prune of expired QR link sessions
+setInterval(() => {
+  const now = Date.now();
+  for (const [code, sess] of activeQRSessions.entries()) {
+    if (now > sess.expiresAt || sess.status === 'consumed') {
+      activeQRSessions.delete(code);
+    }
+  }
+}, 3 * 60 * 1000);
+
+exports.startQRLink = async (req, res) => {
+  try {
+    const rawBytes = crypto.randomBytes(24).toString('hex');
+    const qrCode = `synch_link_${rawBytes}`;
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes validity
+
+    activeQRSessions.set(qrCode, {
+      status: 'pending',
+      createdAt: Date.now(),
+      expiresAt,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
+    res.json({
+      qrCode,
+      expiresAt
+    });
+  } catch (error) {
+    console.error('startQRLink error:', error);
+    res.status(500).json({ error: 'Failed to start QR link session' });
+  }
+};
+
+exports.checkQRLink = async (req, res) => {
+  try {
+    const { qrCode } = req.params;
+    if (!qrCode) return res.status(400).json({ error: 'QR code required' });
+
+    const sess = activeQRSessions.get(qrCode);
+    if (!sess || Date.now() > sess.expiresAt) {
+      activeQRSessions.delete(qrCode);
+      return res.status(404).json({ status: 'expired', error: 'QR code expired or invalid' });
+    }
+
+    if (sess.status === 'approved') {
+      sess.status = 'consumed';
+      return res.json({
+        status: 'approved',
+        token: sess.token,
+        user: sess.user
+      });
+    }
+
+    res.json({ status: sess.status });
+  } catch (error) {
+    console.error('checkQRLink error:', error);
+    res.status(500).json({ error: 'Failed to check QR link status' });
+  }
+};
+
+exports.approveQRLink = async (req, res) => {
+  try {
+    const { qrCode, deviceName } = req.body;
+    if (!qrCode) return res.status(400).json({ error: 'QR code is required' });
+
+    const sess = activeQRSessions.get(qrCode);
+    if (!sess || Date.now() > sess.expiresAt) {
+      activeQRSessions.delete(qrCode);
+      return res.status(400).json({ error: 'This QR code has expired. Please refresh the page on your computer and try again.' });
+    }
+
+    if (sess.status !== 'pending') {
+      return res.status(400).json({ error: 'This QR code has already been used' });
+    }
+
+    const webToken = generateToken(req.user.id);
+    const finalDeviceName = deviceName || parseDeviceName(sess.userAgent) || 'Synch Web';
+    const clientIp = sess.ip || req.ip;
+
+    const newSession = await Session.create(req.user.id, webToken, finalDeviceName, clientIp);
+    await User.updateStatus(req.user.id, 'online');
+
+    const publicUser = User.toPublicJSON(req.user);
+
+    sess.status = 'approved';
+    sess.token = webToken;
+    sess.user = publicUser;
+
+    const socketIO = req.app?.get('io') || io;
+    if (socketIO) {
+      socketIO.to(`qr:${qrCode}`).emit('qr:approved', {
+        token: webToken,
+        user: publicUser
+      });
+      socketIO.to(`user:${req.user.id}`).emit('session:updated', {
+        type: 'created',
+        session: newSession
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Companion device linked successfully!',
+      session: {
+        id: newSession.id,
+        device: newSession.device,
+        ip: newSession.ip,
+        createdAt: newSession.created_at
+      }
+    });
+  } catch (error) {
+    console.error('approveQRLink error:', error);
+    res.status(500).json({ error: 'Failed to approve QR link' });
+  }
+};
+
 
 
 

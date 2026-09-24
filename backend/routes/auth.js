@@ -35,6 +35,11 @@ router.post('/2fa/verify-password', auth, authController.verifyPasswordFor2FA);
 router.post('/2fa/respond-device-prompt', auth, authController.respondDevicePrompt);
 router.get('/2fa/pending-prompts', auth, authController.getPendingDevicePrompts);
 
+// QR Device Linking Endpoints (WhatsApp-style Web Pairing)
+router.post('/qr/start', checkLimiter, authController.startQRLink);
+router.get('/qr/status/:qrCode', checkLimiter, authController.checkQRLink);
+router.post('/qr/approve', auth, authController.approveQRLink);
+
 // Authenticated
 router.post('/logout', auth, authController.logout);
 router.put('/2fa', auth, authController.toggle2FA);
