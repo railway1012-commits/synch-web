@@ -34,9 +34,21 @@ exports.removeFriend = async (req, res) => {
     if (!friendId) {
       return res.status(400).json({ error: 'Invalid friend ID' });
     }
+    // Delete private chat and all messages between them
+    const chat = await Chat.findPrivateChat(req.user.id, friendId);
+    let deletedChatId = null;
+    if (chat) {
+      deletedChatId = chat.id;
+      await Chat.delete(chat.id);
+    }
+
     await FriendRequest.removeFriendship(req.user.id, friendId);
 
     if (io) {
+      if (deletedChatId) {
+        io.to(`user:${friendId}`).emit('chat:deleted', { chatId: deletedChatId });
+        io.to(`user:${req.user.id}`).emit('chat:deleted', { chatId: deletedChatId });
+      }
       io.to(`user:${friendId}`).emit('friend:removed', { userId: req.user.id });
       io.to(`user:${req.user.id}`).emit('friend:removed', { userId: friendId });
     }
