@@ -17,6 +17,7 @@ router.get('/:chatId/messages', chatController.getMessages);
 router.get('/:chatId/search', chatController.searchMessages);
 router.delete('/:chatId/clear', chatController.clearChat);
 router.get('/:chatId/export', chatController.exportChat);
+router.post('/:chatId/accept-request', chatController.acceptChatRequest);
 
 module.exports = router;
 

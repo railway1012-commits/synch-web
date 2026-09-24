@@ -169,6 +169,10 @@ const elements = {
   searchSettings: document.getElementById('searchSettings'),
   filterAllChats: document.getElementById('filterAllChats'),
   filterUnreadChats: document.getElementById('filterUnreadChats'),
+  filterRequestsChats: document.getElementById('filterRequestsChats'),
+  requestsPillBadge: document.getElementById('requestsPillBadge'),
+  messageRequestsBar: document.getElementById('messageRequestsBar'),
+  messageRequestsBarText: document.getElementById('messageRequestsBarText'),
   settingsHeroAvatar: document.getElementById('settingsHeroAvatar'),
   settingsHeroName: document.getElementById('settingsHeroName'),
   settingsHeroEmail: document.getElementById('settingsHeroEmail'),
@@ -181,8 +185,15 @@ const elements = {
   chatAvatar: document.getElementById('chatAvatar'),
   chatName: document.getElementById('chatName'),
   chatStatus: document.getElementById('chatStatus'),
+  chatMenuBtn: document.getElementById('chatMenuBtn'),
+  chatHeaderMenu: document.getElementById('chatHeaderMenu'),
   messagesContainer: document.getElementById('messagesContainer'),
   messageInput: document.getElementById('messageInput'),
+  incomingMessageRequestBanner: document.getElementById('incomingMessageRequestBanner'),
+  incomingRequestSenderText: document.getElementById('incomingRequestSenderText'),
+  acceptMessageRequestBtn: document.getElementById('acceptMessageRequestBtn'),
+  declineMessageRequestBtn: document.getElementById('declineMessageRequestBtn'),
+  blockMessageRequestBtn: document.getElementById('blockMessageRequestBtn'),
   sendBtn: document.getElementById('sendBtn'),
   typingIndicator: document.getElementById('typingIndicator'),
   typingText: document.getElementById('typingText'),
@@ -424,19 +435,18 @@ elements.searchSettings?.addEventListener('input', (e) => {
   });
 });
 
-elements.filterAllChats?.addEventListener('click', () => {
-  chatFilter = 'all';
-  elements.filterAllChats.classList.add('active');
-  elements.filterUnreadChats.classList.remove('active');
+function setChatFilter(filter) {
+  chatFilter = filter;
+  elements.filterAllChats?.classList.toggle('active', filter === 'all');
+  elements.filterUnreadChats?.classList.toggle('active', filter === 'unread');
+  elements.filterRequestsChats?.classList.toggle('active', filter === 'requests');
   renderChatList(elements.searchChats ? elements.searchChats.value : '');
-});
+}
 
-elements.filterUnreadChats?.addEventListener('click', () => {
-  chatFilter = 'unread';
-  elements.filterUnreadChats.classList.add('active');
-  elements.filterAllChats.classList.remove('active');
-  renderChatList(elements.searchChats ? elements.searchChats.value : '');
-});
+elements.filterAllChats?.addEventListener('click', () => setChatFilter('all'));
+elements.filterUnreadChats?.addEventListener('click', () => setChatFilter('unread'));
+elements.filterRequestsChats?.addEventListener('click', () => setChatFilter('requests'));
+elements.messageRequestsBar?.addEventListener('click', () => setChatFilter('requests'));
 
 document.getElementById('railNewChatBtn')?.addEventListener('click', () => initConnectModal());
 document.getElementById('newChatBtn')?.addEventListener('click', () => initConnectModal());
@@ -468,6 +478,13 @@ async function loadChats() {
     chats = data.chats || [];
     localStorage.setItem('synch_chats_cache', JSON.stringify(chats));
     renderChatList(elements.searchChats ? elements.searchChats.value : '');
+    if (currentChat && currentChat._id) {
+      const updated = chats.find(c => String(c._id || c.id) === String(currentChat._id));
+      if (updated) {
+        Object.assign(currentChat, updated);
+        updateChatRestrictions(currentChat);
+      }
+    }
     prefetchRecentChats();
   } catch (error) {
     if (error.banned) {
@@ -504,29 +521,65 @@ function prefetchRecentChats() {
 
 function renderChatList(searchQuery = '') {
   const savedNicknames = JSON.parse(localStorage.getItem('synch_nicknames') || '{}');
+  const myId = currentUser?._id || currentUser?.id;
   updateRailUnreadBadge();
+
+  // Incoming Message Requests Count
+  const incomingRequestsCount = chats.filter(chat => {
+    if (chat.type === 'group' || chat.isFriend) return false;
+    const incCount = chat.incomingPendingUnanswered || 0;
+    const mySent = chat.pendingUnanswered || 0;
+    return incCount > 0 || (mySent === 0 && (chat.unreadCount || 0) > 0);
+  }).length;
+
+  if (elements.requestsPillBadge) {
+    elements.requestsPillBadge.textContent = incomingRequestsCount > 99 ? '99+' : incomingRequestsCount;
+    elements.requestsPillBadge.style.display = incomingRequestsCount > 0 ? 'inline-flex' : 'none';
+  }
+  if (elements.messageRequestsBar) {
+    if (incomingRequestsCount > 0 && chatFilter !== 'requests') {
+      elements.messageRequestsBar.style.display = 'flex';
+      if (elements.messageRequestsBarText) {
+        elements.messageRequestsBarText.textContent = `Message Requests (${incomingRequestsCount})`;
+      }
+    } else {
+      elements.messageRequestsBar.style.display = 'none';
+    }
+  }
+
   const filteredChats = chats.filter(chat => {
     if (chat.type !== 'group' && !chat.lastMessage) return false;
-    const otherParticipant = chat.participants?.find(p => p._id !== currentUser._id);
+    const otherParticipant = chat.participants?.find(p => String(p._id || p.id) !== String(myId));
     const isUnavailable = otherParticipant?.isDeleted || otherParticipant?.username === 'Account Unavailable' || otherParticipant?.username?.startsWith('unavailable_');
     const displayName = isUnavailable ? 'Account Unavailable' : (savedNicknames[otherParticipant?._id] || (chat.type === 'group' ? chat.name : otherParticipant?.username));
     const matchesSearch = !searchQuery || displayName?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = chatFilter === 'all' || (chatFilter === 'unread' && (chat.unreadCount || 0) > 0);
+
+    const isRequest = !chat.isFriend && chat.type !== 'group';
+    let matchesFilter = true;
+    if (chatFilter === 'all') {
+      matchesFilter = true;
+    } else if (chatFilter === 'unread') {
+      matchesFilter = (chat.unreadCount || 0) > 0;
+    } else if (chatFilter === 'requests') {
+      matchesFilter = isRequest;
+    }
     return matchesSearch && matchesFilter;
   });
+
   if (filteredChats.length === 0) {
-    elements.chatList.innerHTML = `<div class="empty-state"><p>${searchQuery ? 'No chats found' : (chatFilter === 'unread' ? 'No unread messages' : 'No conversations yet')}</p></div>`;
+    const emptyMsg = searchQuery ? 'No chats found' : (chatFilter === 'unread' ? 'No unread messages' : (chatFilter === 'requests' ? 'No message requests' : 'No conversations yet'));
+    elements.chatList.innerHTML = `<div class="empty-state"><p>${emptyMsg}</p></div>`;
     return;
   }
+
   elements.chatList.innerHTML = filteredChats.map(chat => {
-    const otherParticipant = chat.participants?.find(p => p._id !== currentUser._id);
+    const otherParticipant = chat.participants?.find(p => String(p._id || p.id) !== String(myId));
     const isUnavailable = otherParticipant?.isDeleted || otherParticipant?.username === 'Account Unavailable' || otherParticipant?.username?.startsWith('unavailable_');
     const nickname = isUnavailable ? null : savedNicknames[otherParticipant?._id];
     const name = isUnavailable ? 'Account Unavailable' : (nickname || (chat.type === 'group' ? chat.name : otherParticipant?.username || 'User'));
     const avatar = isUnavailable ? null : (chat.type === 'group' ? chat.avatar : otherParticipant?.avatar);
     const status = isUnavailable ? 'offline' : (otherParticipant?.status || 'offline');
     const lastMessage = chat.lastMessage;
-    const myId = currentUser?._id || currentUser?.id;
     const senderId = lastMessage?.sender?._id || lastMessage?.sender?.id || lastMessage?.senderId || lastMessage?.sender_id || (typeof lastMessage?.sender === 'object' ? null : lastMessage?.sender);
     const isOwnMessage = !!(myId && senderId && String(senderId) === String(myId));
     const isDeleted = !!(lastMessage?.deleted || lastMessage?.deletedForEveryone || lastMessage?.type === 'DELETED');
@@ -549,6 +602,7 @@ function renderChatList(searchQuery = '') {
     }
     const preview = previewPrefix + previewText;
     const unreadCount = chat.unreadCount || 0;
+    const isChatRequest = !chat.isFriend && chat.type !== 'group';
     return `
       <div class="chat-item ${currentChat?._id === chat._id ? 'active' : ''}" data-chat-id="${chat._id}" role="button">
         <div class="chat-item-avatar">
@@ -557,7 +611,7 @@ function renderChatList(searchQuery = '') {
         </div>
         <div class="chat-item-content">
           <div class="chat-item-header">
-            <span class="chat-item-name">${escapeHtml(name)} ${!isUnavailable ? renderUserBadge(otherParticipant?.badge) : ''}</span>
+            <span class="chat-item-name">${escapeHtml(name)} ${!isUnavailable ? renderUserBadge(otherParticipant?.badge) : ''} ${isChatRequest ? '<span class="chat-request-tag">Request</span>' : ''}</span>
             <span class="chat-time">${lastMessage ? formatTime(lastMessage.createdAt) : ''}</span>
           </div>
           <div class="chat-preview">${escapeHtml(preview.substring(0, 40))}</div>
@@ -604,17 +658,25 @@ function updateChatRestrictions(chat) {
   if (Array.isArray(messages)) {
     for (const m of messages) {
       if (m.deleted || m.deletedForEveryone || m.type === 'DELETED') continue;
-      const sId = String(m.sender?._id || m.sender?.id || m.senderId || m.sender_id || m.sender || '');
+      const sId = String(m.sender?._id || m.sender?.id || m.senderId || m.sender_id || (typeof m.sender === 'object' ? '' : m.sender) || '');
       if (sId && sId === String(myId)) mySentCount++;
       else if (sId) otherReplyCount++;
     }
   }
+
   const pendingUnanswered = chat.pendingUnanswered || 0;
-  const isMessageRequestWaiting = (!isFriend && chat.type !== 'group' && (pendingUnanswered >= 1 || (mySentCount >= 1 && otherReplyCount === 0)));
+  const incomingPendingUnanswered = chat.incomingPendingUnanswered || 0;
+
+  // Outgoing waiting: I sent >= 1 message to non-friend and they haven't replied
+  const isMessageRequestWaiting = (!isFriend && chat.type !== 'group' && !isBlocked && (pendingUnanswered >= 1 || (mySentCount >= 1 && otherReplyCount === 0)));
+
+  // Incoming request: Non-friend sent >= 1 message to me and I haven't replied/accepted
+  const isIncomingMessageRequest = (!isFriend && chat.type !== 'group' && !isBlocked && (incomingPendingUnanswered >= 1 || (otherReplyCount >= 1 && mySentCount === 0)));
 
   const inputWrapper = document.querySelector('.message-input-wrapper');
   const blockedBanner = document.getElementById('blockedChatBanner');
   const waitingBanner = document.getElementById('messageRequestWaitingBanner');
+  const incomingBanner = document.getElementById('incomingMessageRequestBanner');
   const introBanner = document.getElementById('messageRequestIntroBanner');
   const blockedText = document.getElementById('blockedBannerText');
   const unblockBtn = document.getElementById('unblockChatBtn');
@@ -623,6 +685,7 @@ function updateChatRestrictions(chat) {
   if (isBlocked) {
     if (inputWrapper) inputWrapper.style.display = 'none';
     if (waitingBanner) waitingBanner.style.display = 'none';
+    if (incomingBanner) incomingBanner.style.display = 'none';
     if (introBanner) introBanner.style.display = 'none';
     if (blockedBanner) {
       blockedBanner.style.display = 'block';
@@ -640,20 +703,117 @@ function updateChatRestrictions(chat) {
         deleteBtn.onclick = () => deleteChat(chat._id);
       }
     }
+  } else if (isIncomingMessageRequest) {
+    if (inputWrapper) inputWrapper.style.display = 'none';
+    if (blockedBanner) blockedBanner.style.display = 'none';
+    if (waitingBanner) waitingBanner.style.display = 'none';
+    if (introBanner) introBanner.style.display = 'none';
+    if (incomingBanner) {
+      incomingBanner.style.display = 'block';
+      const senderTextEl = document.getElementById('incomingRequestSenderText');
+      const otherName = otherParticipant?.username || 'This user';
+      if (senderTextEl) {
+        senderTextEl.textContent = `@${otherName} sent you a message request.`;
+      }
+      const acceptBtn = document.getElementById('acceptMessageRequestBtn');
+      const declineBtn = document.getElementById('declineMessageRequestBtn');
+      const blockBtn = document.getElementById('blockMessageRequestBtn');
+
+      if (acceptBtn) acceptBtn.onclick = () => window.acceptMessageRequest(chat);
+      if (declineBtn) declineBtn.onclick = () => window.declineMessageRequest(chat);
+      if (blockBtn) blockBtn.onclick = () => window.blockMessageRequest(chat);
+    }
   } else if (isMessageRequestWaiting) {
     if (inputWrapper) inputWrapper.style.display = 'none';
     if (blockedBanner) blockedBanner.style.display = 'none';
+    if (incomingBanner) incomingBanner.style.display = 'none';
     if (introBanner) introBanner.style.display = 'none';
     if (waitingBanner) waitingBanner.style.display = 'block';
   } else {
     if (blockedBanner) blockedBanner.style.display = 'none';
     if (waitingBanner) waitingBanner.style.display = 'none';
+    if (incomingBanner) incomingBanner.style.display = 'none';
     if (inputWrapper) inputWrapper.style.display = 'flex';
     if (introBanner) {
-      introBanner.style.display = (!isFriend && chat.type !== 'group' && mySentCount === 0 && pendingUnanswered === 0) ? 'block' : 'none';
+      introBanner.style.display = (!isFriend && chat.type !== 'group' && mySentCount === 0 && otherReplyCount === 0 && pendingUnanswered === 0) ? 'block' : 'none';
     }
   }
 }
+
+window.acceptMessageRequest = async function(chat) {
+  if (!chat || !chat._id) return;
+  try {
+    const res = await fetchAPI(`/api/chats/${chat._id}/accept-request`, { method: 'POST' });
+    showToast('Message request accepted!', 'success');
+    chat.isFriend = true;
+    chat.pendingUnanswered = 0;
+    chat.incomingPendingUnanswered = 0;
+    updateChatRestrictions(chat);
+    await loadChats();
+    updateFriendBadges();
+  } catch (err) {
+    showToast(getFriendlyError(err.message), 'error');
+  }
+};
+
+window.declineMessageRequest = async function(chat) {
+  if (!chat || !chat._id) return;
+  const confirmed = await showConfirm(
+    'Decline Message Request',
+    'Are you sure you want to decline this message request? All messages and the conversation will be permanently deleted.',
+    'Decline',
+    true
+  );
+  if (!confirmed) return;
+  try {
+    await fetchAPI(`/api/chats/${chat._id}`, { method: 'DELETE' });
+    showToast('Message request declined', 'info');
+    messageCache.delete(String(chat._id));
+    persistMessageCache();
+    leaveChat(chat._id);
+    currentChat = null;
+    elements.noChatSelected.style.display = 'flex';
+    elements.chatView.style.display = 'none';
+    document.querySelector('.chat-app').classList.remove('chat-open');
+    await loadChats();
+  } catch (err) {
+    showToast(getFriendlyError(err.message), 'error');
+  }
+};
+
+window.blockMessageRequest = async function(chat) {
+  if (!chat || !chat._id) return;
+  const myId = currentUser ? (currentUser._id || currentUser.id) : null;
+  const otherParticipant = chat.participants?.find(p => String(p._id || p.id) !== String(myId));
+  const targetId = otherParticipant?._id || otherParticipant?.id;
+  const otherName = otherParticipant?.username || 'this user';
+
+  const confirmed = await showConfirm(
+    'Block User',
+    `Are you sure you want to block @${otherName}? They will not be able to contact you and this conversation will be permanently deleted.`,
+    'Block',
+    true
+  );
+  if (!confirmed) return;
+  try {
+    if (targetId) {
+      await fetchAPI(`/api/users/${targetId}/block`, { method: 'POST' });
+    }
+    await fetchAPI(`/api/chats/${chat._id}`, { method: 'DELETE' });
+    showToast('User blocked and chat deleted', 'success');
+    messageCache.delete(String(chat._id));
+    persistMessageCache();
+    leaveChat(chat._id);
+    currentChat = null;
+    elements.noChatSelected.style.display = 'flex';
+    elements.chatView.style.display = 'none';
+    document.querySelector('.chat-app').classList.remove('chat-open');
+    loadBlockedUsers();
+    await loadChats();
+  } catch (err) {
+    showToast(getFriendlyError(err.message), 'error');
+  }
+};
 
 window.unblockUserFromChat = async function(userId) {
   try {
@@ -1305,12 +1465,15 @@ async function deleteMessage(messageId) {
   const actionsContainer = document.getElementById('deleteMessageActions');
 
   if (modal && actionsContainer) {
+    const modalCloseBtn = modal.querySelector('.modal-close[data-close="deleteMessageModal"]');
     if (canDeleteForEveryone) {
+      if (modalCloseBtn) modalCloseBtn.style.display = 'flex';
       actionsContainer.innerHTML = `
         <button type="button" class="btn btn-secondary" id="btnDelForMe" style="flex: 1; min-height: 40px; border-radius: 12px; font-weight: 600; font-size: 13.5px;">Delete for me</button>
         <button type="button" class="btn btn-danger" id="btnDelForEveryone" style="flex: 1; min-height: 40px; border-radius: 12px; font-weight: 600; font-size: 13.5px; background: #e53935; color: white;">Delete for everyone</button>
       `;
     } else {
+      if (modalCloseBtn) modalCloseBtn.style.display = 'none';
       actionsContainer.innerHTML = `
         <button type="button" class="btn btn-secondary" data-close="deleteMessageModal" style="flex: 1; min-height: 40px; border-radius: 12px; font-weight: 600; font-size: 13.5px;">Cancel</button>
         <button type="button" class="btn btn-danger" id="btnDelForMe" style="flex: 1; min-height: 40px; border-radius: 12px; font-weight: 600; font-size: 13.5px; background: #e53935; color: white;">Delete for me</button>
@@ -1929,6 +2092,13 @@ function populateProfileModal({ user, isFriends = false, friendStatus = 'none', 
           </svg>
           <span>Export</span>
         </button>
+        <button class="profile-tool-btn danger" onclick="removeFriendFromProfile('${user._id || user.id}')" title="Remove Friend">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+            <line x1="18" y1="8" x2="23" y2="13"/><line x1="23" y1="8" x2="18" y2="13"/>
+          </svg>
+          <span>Remove</span>
+        </button>
         <button class="profile-tool-btn danger" onclick="onProfileBlockClick()" title="Block User">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
@@ -2110,6 +2280,37 @@ window.onProfileExportClick = onProfileExportClick;
 window.onProfileBlockClick = onProfileBlockClick;
 window.onProfileReportClick = onProfileReportClick;
 
+window.removeFriendFromProfile = async function(userId) {
+  if (!userId) return;
+  const targetName = currentChatUser?.username || 'this user';
+  const confirmed = await showConfirm(
+    'Remove Friend',
+    `Are you sure you want to remove @${targetName} from your friends? Your conversation and messages will be permanently deleted.`,
+    'Remove Friend',
+    true
+  );
+  if (!confirmed) return;
+  try {
+    await fetchAPI(`/api/users/friends/${userId}`, { method: 'DELETE' });
+    closeModal('userInfoModal');
+    showToast('Friend removed', 'success');
+    updateFriendBadges();
+    await loadChats();
+    const myId = currentUser ? String(currentUser._id || currentUser.id) : null;
+    if (currentChat && currentChat.type !== 'group') {
+      const other = currentChat.participants?.find(p => String(p._id || p.id) !== myId);
+      if (other && String(other._id || other.id) === String(userId)) {
+        if (currentChat._id) leaveChat(currentChat._id);
+        currentChat = null;
+        elements.noChatSelected.style.display = 'flex';
+        elements.chatView.style.display = 'none';
+        document.querySelector('.chat-app').classList.remove('chat-open');
+      }
+    }
+  } catch (error) {
+    showToast(getFriendlyError(error.message), 'error');
+  }
+};
 
 document.getElementById('chatUserInfo')?.addEventListener('click', () => {
   if (!currentChat) return;
@@ -2117,13 +2318,92 @@ document.getElementById('chatUserInfo')?.addEventListener('click', () => {
     openGroupInfoModal(currentChat);
     return;
   }
-  const p = currentChat.participants?.find(p => p._id !== currentUser._id);
+  const myId = currentUser ? String(currentUser._id || currentUser.id) : null;
+  const p = currentChat.participants?.find(p => String(p._id || p.id) !== myId);
   if (!p) return;
+  const isFriend = currentChat.isFriend === true;
+  const isBlocked = currentChat.isBlocked === true || currentChat.isBlockedByMe === true;
   populateProfileModal({
-    user: p,
-    isFriends: true,
-    friendStatus: 'friends'
+    user: { ...p, isBlocked: isBlocked, isBlockedByMe: currentChat.isBlockedByMe },
+    isFriends: isFriend,
+    friendStatus: isBlocked ? 'blocked' : (isFriend ? 'friends' : 'none')
   });
+});
+
+// Chat Header More Options Menu
+document.getElementById('chatMenuBtn')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (!currentChat) return;
+  const menu = document.getElementById('chatHeaderMenu');
+  if (!menu) return;
+
+  const rect = e.currentTarget.getBoundingClientRect();
+  menu.style.top = `${rect.bottom + 6}px`;
+  menu.style.right = `${Math.max(16, window.innerWidth - rect.right)}px`;
+  menu.style.left = 'auto';
+
+  // Toggle remove friend item
+  const removeFriendItem = document.getElementById('chatHeaderRemoveFriend');
+  if (removeFriendItem) {
+    removeFriendItem.style.display = (currentChat.type !== 'group' && currentChat.isFriend) ? 'flex' : 'none';
+  }
+
+  // Toggle block text
+  const blockText = document.getElementById('chatHeaderBlockText');
+  const isBlocked = currentChat.isBlocked === true || currentChat.isBlockedByMe === true;
+  if (blockText) {
+    blockText.textContent = isBlocked ? 'Unblock Contact' : 'Block Contact';
+  }
+
+  menu.classList.add('active');
+});
+
+document.getElementById('chatHeaderViewProfile')?.addEventListener('click', () => {
+  hideContextMenu();
+  document.getElementById('chatUserInfo')?.click();
+});
+
+document.getElementById('chatHeaderSearchMsgs')?.addEventListener('click', () => {
+  hideContextMenu();
+  document.getElementById('searchMessagesBtn')?.click();
+});
+
+document.getElementById('chatHeaderExportChat')?.addEventListener('click', () => {
+  hideContextMenu();
+  document.getElementById('exportChatBtn')?.click();
+});
+
+document.getElementById('chatHeaderRemoveFriend')?.addEventListener('click', () => {
+  hideContextMenu();
+  if (!currentChat) return;
+  const myId = currentUser ? String(currentUser._id || currentUser.id) : null;
+  const other = currentChat.participants?.find(p => String(p._id || p.id) !== myId);
+  if (other) {
+    window.removeFriendFromProfile(other._id || other.id);
+  }
+});
+
+document.getElementById('chatHeaderBlockUser')?.addEventListener('click', () => {
+  hideContextMenu();
+  if (!currentChat) return;
+  const myId = currentUser ? String(currentUser._id || currentUser.id) : null;
+  const other = currentChat.participants?.find(p => String(p._id || p.id) !== myId);
+  const targetId = other?._id || other?.id;
+  if (!targetId) return;
+  const isBlocked = currentChat.isBlocked === true || currentChat.isBlockedByMe === true;
+  if (isBlocked) {
+    window.unblockUserFromChat(targetId);
+  } else {
+    currentChatUser = other;
+    document.getElementById('blockUserBtn')?.click();
+  }
+});
+
+document.getElementById('chatHeaderDeleteChat')?.addEventListener('click', () => {
+  hideContextMenu();
+  if (currentChat) {
+    deleteChat(currentChat._id);
+  }
 });
 
 document.getElementById('modalMessageBtn')?.addEventListener('click', () => {
@@ -2203,7 +2483,7 @@ document.getElementById('newGroupBtn')?.addEventListener('click', async () => {
   openModal('createGroupModal');
 
   try {
-    const res = await fetchAPI('/api/friends');
+    const res = await fetchAPI('/api/users/friends');
     const friends = res.friends || [];
     if (!container) return;
 
@@ -3466,11 +3746,27 @@ document.getElementById('confirmGoogleSetPasswordBtn')?.addEventListener('click'
 
 function onSocketConnected() {
   loadChats();
+  updateFriendBadges();
+  loadBlockedUsers();
   if (currentChat && currentChat._id) {
     joinChat(currentChat._id);
-    loadMessages();
+    loadMessages().then(() => {
+      updateChatRestrictions(currentChat);
+    });
   }
 }
+
+window.addEventListener('online', () => {
+  showToast('Back online', 'success');
+  if (typeof socket !== 'undefined' && socket && !socket.connected) {
+    socket.connect();
+  }
+  onSocketConnected();
+});
+
+window.addEventListener('offline', () => {
+  showToast('You are currently offline', 'warning');
+});
 
 function onSocketDisconnected() {
   showToast('Connection lost. Reconnecting...', 'warning');
@@ -3570,14 +3866,15 @@ function onNewMessage(message) {
 function onUserBlockedEvent(data) {
   loadBlockedUsers();
   loadChats();
-  const targetId = String(data?.targetUserId || data?.userId);
+  const targetId = String(data?.targetId || data?.targetUserId || data?.userId);
+  const myId = currentUser ? String(currentUser._id || currentUser.id) : null;
+  const isBlockedByMe = data.blockedBy ? (String(data.blockedBy) === myId) : (String(data.userId) === targetId);
+
   if (currentChat && currentChat.participants) {
-    const other = currentChat.participants.find(p => String(p._id || p.id) === targetId);
+    const other = currentChat.participants.find(p => String(p._id || p.id) === targetId || (data.userId && String(p._id || p.id) === String(data.userId)));
     if (other) {
       currentChat.isBlocked = true;
-      if (String(data.userId) === String(currentUser._id || currentUser.id)) {
-        currentChat.isBlockedByMe = true;
-      }
+      currentChat.isBlockedByMe = isBlockedByMe;
       updateChatRestrictions(currentChat);
     }
   }
@@ -3586,9 +3883,9 @@ function onUserBlockedEvent(data) {
 function onUserUnblockedEvent(data) {
   loadBlockedUsers();
   loadChats();
-  const targetId = String(data?.targetUserId || data?.userId);
+  const targetId = String(data?.targetId || data?.targetUserId || data?.userId);
   if (currentChat && currentChat.participants) {
-    const other = currentChat.participants.find(p => String(p._id || p.id) === targetId);
+    const other = currentChat.participants.find(p => String(p._id || p.id) === targetId || (data.userId && String(p._id || p.id) === String(data.userId)));
     if (other) {
       currentChat.isBlocked = false;
       currentChat.isBlockedByMe = false;
@@ -3599,6 +3896,42 @@ function onUserUnblockedEvent(data) {
 
 window.onUserBlockedEvent = onUserBlockedEvent;
 window.onUserUnblockedEvent = onUserUnblockedEvent;
+
+function onFriendRemoved(data) {
+  const removedUserId = String(data?.userId);
+  updateFriendBadges();
+  loadChats();
+  const myId = currentUser ? String(currentUser._id || currentUser.id) : null;
+  if (currentChat && currentChat.type !== 'group') {
+    const other = currentChat.participants?.find(p => String(p._id || p.id) !== myId);
+    if (other && String(other._id || other.id) === removedUserId) {
+      if (currentChat._id) leaveChat(currentChat._id);
+      currentChat = null;
+      elements.noChatSelected.style.display = 'flex';
+      elements.chatView.style.display = 'none';
+      document.querySelector('.chat-app').classList.remove('chat-open');
+      showToast('Friend removed. Conversation closed.', 'info');
+    }
+  }
+  if (currentChatUser && String(currentChatUser._id || currentChatUser.id) === removedUserId) {
+    closeModal('userInfoModal');
+  }
+}
+
+function onChatRequestAccepted(data) {
+  const chatId = String(data?.chatId);
+  if (currentChat && String(currentChat._id || currentChat.id) === chatId) {
+    currentChat.isFriend = true;
+    currentChat.pendingUnanswered = 0;
+    currentChat.incomingPendingUnanswered = 0;
+    updateChatRestrictions(currentChat);
+  }
+  loadChats();
+  updateFriendBadges();
+}
+
+window.onFriendRemoved = onFriendRemoved;
+window.onChatRequestAccepted = onChatRequestAccepted;
 
 function onMessageEdited(message) {
   const index = messages.findIndex(m => String(m._id) === String(message._id));
@@ -3940,10 +4273,10 @@ function onUserDeleted(data) {
 
 function onChatDeleted(data) {
   const chatId = parseInt(data.chatId);
-  chats = chats.filter(c => c._id !== chatId);
+  chats = chats.filter(c => parseInt(c._id || c.id) !== chatId);
   messageCache.delete(String(chatId));
   persistMessageCache();
-  if (currentChat?._id === chatId) {
+  if (currentChat && parseInt(currentChat._id || currentChat.id) === chatId) {
     leaveChat(chatId);
     currentChat = null;
     elements.noChatSelected.style.display = 'flex';

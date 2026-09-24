@@ -55,6 +55,42 @@ exports.sendMessage = async (req, res) => {
             error: 'Message request pending. You can only send 1 message until the recipient replies or accepts your friend request.'
           });
         }
+
+        const incomingFromOther = await Message.countPendingUnanswered(chat.id, otherParticipantId, req.user.id);
+        if (incomingFromOther >= 1) {
+          const { pool } = require('../database');
+          const existing = await pool.query(
+            `SELECT * FROM friend_requests
+             WHERE (sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1)
+             LIMIT 1`,
+            [req.user.id, otherParticipantId]
+          );
+          if (existing.rows.length > 0) {
+            await pool.query(
+              `UPDATE friend_requests SET status = 'accepted', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+              [existing.rows[0].id]
+            );
+          } else {
+            await pool.query(
+              `INSERT INTO friend_requests (sender_id, receiver_id, status)
+               VALUES ($1, $2, 'accepted')`,
+              [otherParticipantId, req.user.id]
+            );
+          }
+          if (io) {
+            const uMe = await User.findById(req.user.id);
+            const uOther = await User.findById(otherParticipantId);
+            io.to(`chat:${chat.id}`).emit('chat:request_accepted', { chatId: chat.id, acceptedBy: req.user.id });
+            io.to(`user:${otherParticipantId}`).emit('friend:request_accepted', {
+              user: User.toPublicJSON(uMe),
+              chatId: chat.id
+            });
+            io.to(`user:${req.user.id}`).emit('friend:request_accepted', {
+              user: User.toPublicJSON(uOther),
+              chatId: chat.id
+            });
+          }
+        }
       }
     }
 

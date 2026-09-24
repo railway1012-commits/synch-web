@@ -234,6 +234,18 @@ function initSocket() {
     }
   });
 
+  socket.on('friend:removed', (data) => {
+    if (typeof onFriendRemoved === 'function') {
+      onFriendRemoved(data);
+    }
+  });
+
+  socket.on('chat:request_accepted', (data) => {
+    if (typeof onChatRequestAccepted === 'function') {
+      onChatRequestAccepted(data);
+    }
+  });
+
   socket.on('session:revoked', (data) => {
     if (typeof handleSessionRevoked === 'function') {
       handleSessionRevoked();

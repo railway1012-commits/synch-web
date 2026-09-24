@@ -1007,6 +1007,7 @@ const Chat = {
 
   delete: async (id) => {
     await pool.query('UPDATE chats SET last_message_id = NULL WHERE id = $1', [id]);
+    await pool.query('UPDATE messages SET reply_to_id = NULL WHERE chat_id = $1', [id]);
     await pool.query('DELETE FROM chat_participants WHERE chat_id = $1', [id]);
     await pool.query('DELETE FROM messages WHERE chat_id = $1', [id]);
     await pool.query('DELETE FROM chats WHERE id = $1', [id]);

@@ -81,6 +81,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/friends', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.post('/api/reports', auth, userController.submitReport);
 app.post('/api/report', auth, userController.submitReport);

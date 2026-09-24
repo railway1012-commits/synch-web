@@ -1,4 +1,4 @@
-const { User, FriendRequest, Chat } = require('../database');
+const { User, FriendRequest, Chat, pool } = require('../database');
 
 let io = null;
 exports.setIO = (socketIO) => {
@@ -34,21 +34,26 @@ exports.removeFriend = async (req, res) => {
     if (!friendId) {
       return res.status(400).json({ error: 'Invalid friend ID' });
     }
-    // Delete private chat and all messages between them
-    const chat = await Chat.findPrivateChat(req.user.id, friendId);
-    let deletedChatId = null;
-    if (chat) {
-      deletedChatId = chat.id;
-      await Chat.delete(chat.id);
+    // Delete all private chats and messages between them
+    const chats = await pool.query(
+      `SELECT c.id FROM chats c
+       JOIN chat_participants cp1 ON c.id = cp1.chat_id AND cp1.user_id = $1
+       JOIN chat_participants cp2 ON c.id = cp2.chat_id AND cp2.user_id = $2
+       WHERE c.type = 'private'`,
+      [req.user.id, friendId]
+    );
+
+    for (const r of chats.rows) {
+      await Chat.delete(r.id);
+      if (io) {
+        io.to(`user:${friendId}`).emit('chat:deleted', { chatId: r.id });
+        io.to(`user:${req.user.id}`).emit('chat:deleted', { chatId: r.id });
+      }
     }
 
     await FriendRequest.removeFriendship(req.user.id, friendId);
 
     if (io) {
-      if (deletedChatId) {
-        io.to(`user:${friendId}`).emit('chat:deleted', { chatId: deletedChatId });
-        io.to(`user:${req.user.id}`).emit('chat:deleted', { chatId: deletedChatId });
-      }
       io.to(`user:${friendId}`).emit('friend:removed', { userId: req.user.id });
       io.to(`user:${req.user.id}`).emit('friend:removed', { userId: friendId });
     }
@@ -142,8 +147,8 @@ exports.blockUser = async (req, res) => {
     if (io) {
       io.to(`user:${targetId}`).emit('friend:removed', { userId: req.user.id });
       io.to(`user:${req.user.id}`).emit('friend:removed', { userId: targetId });
-      io.to(`user:${req.user.id}`).emit('user:blocked', { userId: targetId });
-      io.to(`user:${targetId}`).emit('user:blocked', { userId: req.user.id });
+      io.to(`user:${req.user.id}`).emit('user:blocked', { userId: targetId, blockedBy: req.user.id, targetId });
+      io.to(`user:${targetId}`).emit('user:blocked', { userId: req.user.id, blockedBy: req.user.id, targetId });
     }
 
     res.json({ message: 'User blocked successfully' });
@@ -160,8 +165,8 @@ exports.unblockUser = async (req, res) => {
     await User.unblockUser(req.user.id, targetId);
 
     if (io) {
-      io.to(`user:${req.user.id}`).emit('user:unblocked', { userId: targetId });
-      io.to(`user:${targetId}`).emit('user:unblocked', { userId: req.user.id });
+      io.to(`user:${req.user.id}`).emit('user:unblocked', { userId: targetId, unblockedBy: req.user.id, targetId });
+      io.to(`user:${targetId}`).emit('user:unblocked', { userId: req.user.id, unblockedBy: req.user.id, targetId });
     }
 
     res.json({ message: 'User unblocked successfully' });

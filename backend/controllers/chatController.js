@@ -17,6 +17,7 @@ exports.getChats = async (req, res) => {
       let isBlockedByMe = false;
       let isFriend = true;
       let pendingUnanswered = 0;
+      let incomingPendingUnanswered = 0;
 
       if (chat.type === 'private' && chat.participants?.length) {
         const other = chat.participants.find(p => parseInt(p.id || p._id) !== parseInt(req.user.id));
@@ -27,6 +28,7 @@ exports.getChats = async (req, res) => {
           isFriend = await FriendRequest.isFriend(req.user.id, otherId);
           if (!isFriend) {
             pendingUnanswered = await Message.countPendingUnanswered(chat.id, req.user.id, otherId);
+            incomingPendingUnanswered = await Message.countPendingUnanswered(chat.id, otherId, req.user.id);
           }
         }
       }
@@ -43,7 +45,8 @@ exports.getChats = async (req, res) => {
         isBlocked,
         isBlockedByMe,
         isFriend,
-        pendingUnanswered
+        pendingUnanswered,
+        incomingPendingUnanswered
       };
     }));
 
@@ -68,6 +71,7 @@ exports.getChat = async (req, res) => {
     let isBlockedByMe = false;
     let isFriend = true;
     let pendingUnanswered = 0;
+    let incomingPendingUnanswered = 0;
 
     if (chat.type === 'private' && chat.participants?.length) {
       const myBlocked = (req.user.blocked_users || []).map(Number);
@@ -79,6 +83,7 @@ exports.getChat = async (req, res) => {
         isFriend = await FriendRequest.isFriend(req.user.id, otherId);
         if (!isFriend) {
           pendingUnanswered = await Message.countPendingUnanswered(chat.id, req.user.id, otherId);
+          incomingPendingUnanswered = await Message.countPendingUnanswered(chat.id, otherId, req.user.id);
         }
       }
     }
@@ -94,7 +99,8 @@ exports.getChat = async (req, res) => {
         isBlocked,
         isBlockedByMe,
         isFriend,
-        pendingUnanswered
+        pendingUnanswered,
+        incomingPendingUnanswered
       }
     });
   } catch (error) {
@@ -121,8 +127,10 @@ exports.createChat = async (req, res) => {
         const isBlocked = await User.isBlockedBetween(req.user.id, targetUserId);
         const isFriend = await FriendRequest.isFriend(req.user.id, targetUserId);
         let pendingUnanswered = 0;
+        let incomingPendingUnanswered = 0;
         if (!isFriend) {
           pendingUnanswered = await Message.countPendingUnanswered(existingChat.id, req.user.id, targetUserId);
+          incomingPendingUnanswered = await Message.countPendingUnanswered(existingChat.id, targetUserId, req.user.id);
         }
 
         return res.json({
@@ -136,7 +144,8 @@ exports.createChat = async (req, res) => {
             isBlocked,
             isBlockedByMe,
             isFriend,
-            pendingUnanswered
+            pendingUnanswered,
+            incomingPendingUnanswered
           }
         });
       }
@@ -159,12 +168,14 @@ exports.createChat = async (req, res) => {
     let isBlockedByMe = false;
     let isFriend = true;
     let pendingUnanswered = 0;
+    let incomingPendingUnanswered = 0;
     if (targetUserId) {
       isBlockedByMe = myBlocked.includes(targetUserId);
       isBlocked = await User.isBlockedBetween(req.user.id, targetUserId);
       isFriend = await FriendRequest.isFriend(req.user.id, targetUserId);
       if (!isFriend) {
         pendingUnanswered = await Message.countPendingUnanswered(fullChat.id, req.user.id, targetUserId);
+        incomingPendingUnanswered = await Message.countPendingUnanswered(fullChat.id, targetUserId, req.user.id);
       }
     }
 
@@ -178,7 +189,8 @@ exports.createChat = async (req, res) => {
       isBlocked,
       isBlockedByMe,
       isFriend,
-      pendingUnanswered
+      pendingUnanswered,
+      incomingPendingUnanswered
     };
 
     if (io) {
@@ -460,4 +472,97 @@ exports.getIceServers = async (req, res) => {
     });
   }
 };
+
+exports.acceptChatRequest = async (req, res) => {
+  try {
+    const chatId = parseInt(req.params.chatId);
+    const chat = await Chat.findById(chatId);
+    if (!chat || !(await Chat.isParticipant(chat.id, req.user.id))) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    if (chat.type !== 'private') {
+      return res.json({ message: 'Chat is already active', isFriend: true });
+    }
+
+    const other = chat.participants.find(p => parseInt(p._id || p.id) !== parseInt(req.user.id));
+    if (!other) {
+      return res.status(400).json({ error: 'Other participant not found' });
+    }
+    const otherId = parseInt(other._id || other.id);
+
+    const isBlocked = await User.isBlockedBetween(req.user.id, otherId);
+    if (isBlocked) {
+      return res.status(403).json({ error: 'Cannot accept request from blocked user' });
+    }
+
+    // Ensure friendship in friend_requests table
+    const existing = await pool.query(
+      `SELECT * FROM friend_requests
+       WHERE (sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1)
+       LIMIT 1`,
+      [req.user.id, otherId]
+    );
+
+    if (existing.rows.length > 0) {
+      await pool.query(
+        `UPDATE friend_requests SET status = 'accepted', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+        [existing.rows[0].id]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO friend_requests (sender_id, receiver_id, status)
+         VALUES ($1, $2, 'accepted')`,
+        [otherId, req.user.id]
+      );
+    }
+
+    // Mark messages in this chat as read
+    await pool.query(
+      `INSERT INTO message_reads (message_id, user_id)
+       SELECT m.id, $1 FROM messages m
+       WHERE m.chat_id = $2 AND m.sender_id != $1
+       ON CONFLICT DO NOTHING`,
+      [req.user.id, chatId]
+    );
+
+    const chatJSON = {
+      _id: chat.id,
+      id: chat.id,
+      type: chat.type,
+      name: chat.name,
+      participants: chat.participants,
+      isFriend: true,
+      isBlocked: false,
+      isBlockedByMe: false,
+      pendingUnanswered: 0,
+      incomingPendingUnanswered: 0,
+      updatedAt: chat.updated_at
+    };
+
+    if (io) {
+      const uMe = await User.findById(req.user.id);
+      const uOther = await User.findById(otherId);
+
+      io.to(`chat:${chat.id}`).emit('chat:request_accepted', {
+        chatId: chat.id,
+        acceptedBy: req.user.id
+      });
+      io.to(`user:${otherId}`).emit('friend:request_accepted', {
+        user: User.toPublicJSON(uMe),
+        chat: chatJSON
+      });
+      io.to(`user:${req.user.id}`).emit('friend:request_accepted', {
+        user: User.toPublicJSON(uOther),
+        chat: chatJSON
+      });
+    }
+
+    res.json({ message: 'Message request accepted', chat: chatJSON, isFriend: true });
+  } catch (error) {
+    console.error('Accept chat request error:', error);
+    res.status(500).json({ error: 'Error accepting message request' });
+  }
+};
+
 
