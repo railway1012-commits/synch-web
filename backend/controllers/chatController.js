@@ -50,15 +50,21 @@ exports.getChat = async (req, res) => {
 
 exports.createChat = async (req, res) => {
   try {
-    const { participantId, type, name } = req.body;
+    const targetUserId = parseInt(req.body.participantId || req.body.userId);
+    const { type, name } = req.body;
 
     if (type === 'private' || !type) {
-      const existingChat = await Chat.findPrivateChat(req.user.id, parseInt(participantId));
+      if (!targetUserId || isNaN(targetUserId)) {
+        return res.status(400).json({ error: 'Valid participantId or userId is required' });
+      }
+
+      const existingChat = await Chat.findPrivateChat(req.user.id, targetUserId);
 
       if (existingChat) {
         return res.json({
           chat: {
             _id: existingChat.id,
+            id: existingChat.id,
             type: existingChat.type,
             name: existingChat.name,
             participants: existingChat.participants,
@@ -77,12 +83,13 @@ exports.createChat = async (req, res) => {
         await Chat.addParticipant(chat.id, parseInt(id));
       }
     } else {
-      await Chat.addParticipant(chat.id, parseInt(participantId));
+      await Chat.addParticipant(chat.id, targetUserId);
     }
 
     const fullChat = await Chat.findById(chat.id);
     const chatJSON = {
       _id: fullChat.id,
+      id: fullChat.id,
       type: fullChat.type,
       name: fullChat.name,
       participants: fullChat.participants,

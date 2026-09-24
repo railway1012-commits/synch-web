@@ -1,4 +1,4 @@
-const { Message, Chat } = require('../database');
+const { Message, Chat, User, FriendRequest } = require('../database');
 
 let io = null;
 
@@ -15,10 +15,46 @@ exports.sendMessage = async (req, res) => {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
+    let otherParticipantId = null;
     if (chat.type === 'private') {
-      const other = chat.participants.find(p => p._id !== req.user.id);
-      if (other && other.isDeleted) {
-        return res.status(400).json({ error: 'This account is no longer available' });
+      const other = chat.participants.find(p => parseInt(p._id || p.id) !== parseInt(req.user.id));
+      if (other) {
+        otherParticipantId = parseInt(other._id || other.id);
+        if (other.isDeleted) {
+          return res.status(400).json({ error: 'This account is no longer available' });
+        }
+      }
+    }
+
+    // 1. Strict Server-Side Blocking Check
+    if (otherParticipantId) {
+      const isBlocked = await User.isBlockedBetween(req.user.id, otherParticipantId);
+      if (isBlocked) {
+        return res.status(403).json({ error: 'You cannot send messages to this user' });
+      }
+    }
+
+    // 2. Strict Server-Side Non-Friend / Message Request Check
+    if (otherParticipantId) {
+      const isFriend = await FriendRequest.isFriend(req.user.id, otherParticipantId);
+      if (!isFriend) {
+        let candidateType = type || 'text';
+        if (req.file) {
+          if (req.file.mimetype.startsWith('audio/')) {
+            candidateType = 'voice';
+          } else {
+            return res.status(403).json({ error: 'Only text and voice messages can be sent until friend request is accepted' });
+          }
+        } else if (candidateType !== 'text' && candidateType !== 'voice') {
+          return res.status(403).json({ error: 'Only text and voice messages are allowed until friend request is accepted' });
+        }
+
+        const pendingCount = await Message.countPendingUnanswered(chat.id, req.user.id, otherParticipantId);
+        if (pendingCount >= 1) {
+          return res.status(403).json({
+            error: 'Message request pending. You can only send 1 message until the recipient replies or accepts your friend request.'
+          });
+        }
       }
     }
 

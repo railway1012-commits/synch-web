@@ -497,6 +497,9 @@ const User = {
   findAllWithFriendStatus: async (currentUserId, search = '') => {
     const searchClause = search ? `AND (u.username ILIKE $2 OR u.display_name ILIKE $2)` : '';
     const params = search ? [currentUserId, `%${search}%`] : [currentUserId];
+    const me = await User.findById(currentUserId);
+    const myBlocked = (me?.blocked_users || []).map(Number);
+
     const result = await pool.query(
       `SELECT u.id, u.username, u.display_name, u.avatar, u.status, u.last_seen, u.badge,
               fr.id as request_id,
@@ -519,14 +522,18 @@ const User = {
       params
     );
     return result.rows.map(u => {
+      const isBlockedByMe = myBlocked.includes(Number(u.id));
       let friendStatus = 'none';
-      if (u.is_friend || u.request_status === 'accepted') {
+      if (isBlockedByMe) {
+        friendStatus = 'blocked';
+      } else if (u.is_friend || u.request_status === 'accepted') {
         friendStatus = 'friends';
       } else if (u.request_status === 'pending') {
         friendStatus = (u.request_sender_id === currentUserId) ? 'pending_outgoing' : 'pending_incoming';
       }
       return {
         _id: u.id,
+        id: u.id,
         username: u.username,
         displayName: u.display_name,
         avatar: u.avatar,
@@ -534,12 +541,23 @@ const User = {
         lastSeen: u.last_seen,
         badge: u.badge || null,
         friendStatus,
+        isFriend: friendStatus === 'friends',
+        isBlocked: isBlockedByMe,
+        isBlockedByMe,
         requestId: u.request_id
       };
     });
   },
 
   findByIdWithFriendStatus: async (targetUserId, currentUserId) => {
+    const me = await User.findById(currentUserId);
+    const myBlocked = (me?.blocked_users || []).map(Number);
+    const target = await User.findById(targetUserId);
+    const targetBlocked = (target?.blocked_users || []).map(Number);
+    const isBlockedByMe = myBlocked.includes(Number(targetUserId));
+    const isBlockedByTarget = targetBlocked.includes(Number(currentUserId));
+    const isBlocked = isBlockedByMe || isBlockedByTarget;
+
     const result = await pool.query(
       `SELECT u.id, u.username, u.display_name, u.avatar, u.status, u.last_seen, u.is_deleted, u.badge,
               fr.id as request_id,
@@ -562,13 +580,16 @@ const User = {
     if (result.rows.length === 0) return null;
     const u = result.rows[0];
     let friendStatus = 'none';
-    if (u.is_friend || u.request_status === 'accepted') {
+    if (isBlockedByMe) {
+      friendStatus = 'blocked';
+    } else if (u.is_friend || u.request_status === 'accepted') {
       friendStatus = 'friends';
     } else if (u.request_status === 'pending') {
       friendStatus = (u.request_sender_id === currentUserId) ? 'pending_outgoing' : 'pending_incoming';
     }
     return {
       _id: u.id,
+      id: u.id,
       username: u.is_deleted ? 'Account Unavailable' : u.username,
       displayName: u.display_name,
       avatar: u.is_deleted ? null : u.avatar,
@@ -577,6 +598,9 @@ const User = {
       isDeleted: !!u.is_deleted,
       badge: u.badge || null,
       friendStatus,
+      isFriend: friendStatus === 'friends',
+      isBlocked,
+      isBlockedByMe,
       requestId: u.request_id
     };
   },
@@ -641,16 +665,38 @@ const User = {
 
   blockUser: async (userId, blockedId) => {
     const user = await User.findById(userId);
-    if (!user.blocked_users.includes(blockedId)) {
-      user.blocked_users.push(blockedId);
+    if (!user) return;
+    const bId = parseInt(blockedId);
+    if (!user.blocked_users.map(Number).includes(bId)) {
+      user.blocked_users.push(bId);
       await pool.query('UPDATE users SET blocked_users = $1 WHERE id = $2', [JSON.stringify(user.blocked_users), userId]);
     }
   },
 
   unblockUser: async (userId, blockedId) => {
     const user = await User.findById(userId);
-    user.blocked_users = user.blocked_users.filter(id => id !== blockedId);
+    if (!user) return;
+    const bId = parseInt(blockedId);
+    user.blocked_users = user.blocked_users.filter(id => Number(id) !== bId);
     await pool.query('UPDATE users SET blocked_users = $1 WHERE id = $2', [JSON.stringify(user.blocked_users), userId]);
+  },
+
+  isBlockedBetween: async (user1Id, user2Id) => {
+    const u1 = parseInt(user1Id);
+    const u2 = parseInt(user2Id);
+    if (!u1 || !u2 || isNaN(u1) || isNaN(u2) || u1 === u2) return false;
+    const result = await pool.query(
+      `SELECT id, blocked_users FROM users WHERE id IN ($1, $2)`,
+      [u1, u2]
+    );
+    for (const row of result.rows) {
+      const blocked = safeJsonParse(row.blocked_users, []).map(Number);
+      const otherId = (Number(row.id) === u1) ? u2 : u1;
+      if (blocked.includes(otherId)) {
+        return true;
+      }
+    }
+    return false;
   },
 
   getBlockedUsers: async (userId) => {
@@ -1147,6 +1193,25 @@ const Message = {
     }
   },
 
+  countPendingUnanswered: async (chatId, senderId, recipientId) => {
+    const cId = parseInt(chatId);
+    const sId = parseInt(senderId);
+    const rId = parseInt(recipientId);
+    if (!cId || !sId || !rId || isNaN(cId) || isNaN(sId) || isNaN(rId)) return 0;
+    const result = await pool.query(
+      `SELECT COUNT(*)::int as count FROM messages
+       WHERE chat_id = $1
+         AND sender_id = $2
+         AND deleted = FALSE
+         AND created_at > COALESCE(
+           (SELECT MAX(created_at) FROM messages WHERE chat_id = $1 AND sender_id = $3 AND deleted = FALSE),
+           '1970-01-01'::timestamp
+         )`,
+      [cId, sId, rId]
+    );
+    return parseInt(result.rows[0]?.count || 0);
+  },
+
   toJSON: (msg) => ({
     _id: msg.id,
     chat: msg.chat_id,
@@ -1289,6 +1354,20 @@ const FriendRequest = {
       [user1Id, user2Id]
     );
     return true;
+  },
+
+  isFriend: async (user1Id, user2Id) => {
+    const u1 = parseInt(user1Id);
+    const u2 = parseInt(user2Id);
+    if (!u1 || !u2 || isNaN(u1) || isNaN(u2) || u1 === u2) return false;
+    const result = await pool.query(
+      `SELECT 1 FROM friend_requests 
+       WHERE ((sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1))
+         AND status = 'accepted'
+       LIMIT 1`,
+      [u1, u2]
+    );
+    return result.rows.length > 0;
   }
 };
 

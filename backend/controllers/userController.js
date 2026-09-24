@@ -131,6 +131,7 @@ exports.blockUser = async (req, res) => {
       io.to(`user:${targetId}`).emit('friend:removed', { userId: req.user.id });
       io.to(`user:${req.user.id}`).emit('friend:removed', { userId: targetId });
       io.to(`user:${req.user.id}`).emit('user:blocked', { userId: targetId });
+      io.to(`user:${targetId}`).emit('user:blocked', { userId: req.user.id });
     }
 
     res.json({ message: 'User blocked successfully' });
@@ -142,8 +143,14 @@ exports.blockUser = async (req, res) => {
 exports.unblockUser = async (req, res) => {
   try {
     const { userId } = req.params;
+    const targetId = parseInt(userId);
 
-    await User.unblockUser(req.user.id, parseInt(userId));
+    await User.unblockUser(req.user.id, targetId);
+
+    if (io) {
+      io.to(`user:${req.user.id}`).emit('user:unblocked', { userId: targetId });
+      io.to(`user:${targetId}`).emit('user:unblocked', { userId: req.user.id });
+    }
 
     res.json({ message: 'User unblocked successfully' });
   } catch (error) {
@@ -223,6 +230,11 @@ exports.sendFriendRequest = async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    const isBlocked = await User.isBlockedBetween(req.user.id, targetUserId);
+    if (isBlocked) {
+      return res.status(403).json({ error: 'Cannot send friend request to blocked user' });
+    }
+
     const request = await FriendRequest.send(req.user.id, targetUserId);
 
     if (io) {
@@ -246,6 +258,16 @@ exports.sendFriendRequest = async (req, res) => {
 exports.acceptFriendRequest = async (req, res) => {
   try {
     const { id } = req.params;
+    const fr = await FriendRequest.findById(parseInt(id));
+    if (!fr) {
+      return res.status(404).json({ error: 'Friend request not found' });
+    }
+
+    const isBlocked = await User.isBlockedBetween(fr.sender_id, fr.receiver_id);
+    if (isBlocked) {
+      return res.status(403).json({ error: 'Cannot accept friend request from blocked user' });
+    }
+
     const result = await FriendRequest.accept(parseInt(id), req.user.id);
 
     if (!result) {

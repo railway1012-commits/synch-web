@@ -1,4 +1,4 @@
-const { Message, Chat, User } = require('../database');
+const { Message, Chat, User, FriendRequest } = require('../database');
 
 const onlineUsers = new Map();
 const activeCalls = new Map();
@@ -54,11 +54,44 @@ module.exports = (io) => {
           return;
         }
 
+        let otherParticipantId = null;
         if (chat.type === 'private') {
-          const other = chat.participants.find(p => p._id !== user.id);
-          if (other && other.isDeleted) {
-            socket.emit('error', { message: 'This account is no longer available' });
+          const other = chat.participants.find(p => parseInt(p._id || p.id) !== parseInt(user.id));
+          if (other) {
+            otherParticipantId = parseInt(other._id || other.id);
+            if (other.isDeleted) {
+              socket.emit('error', { message: 'This account is no longer available' });
+              return;
+            }
+          }
+        }
+
+        // Strict Server-Side Blocking Check
+        if (otherParticipantId) {
+          const isBlocked = await User.isBlockedBetween(user.id, otherParticipantId);
+          if (isBlocked) {
+            socket.emit('error', { message: 'You cannot send messages to this user' });
             return;
+          }
+        }
+
+        // Strict Server-Side Non-Friend / Message Request Check
+        if (otherParticipantId) {
+          const isFriend = await FriendRequest.isFriend(user.id, otherParticipantId);
+          if (!isFriend) {
+            const mType = type || 'text';
+            if (mType !== 'text' && mType !== 'voice') {
+              socket.emit('error', { message: 'Only text and voice messages are allowed until friend request is accepted' });
+              return;
+            }
+
+            const pendingCount = await Message.countPendingUnanswered(chat.id, user.id, otherParticipantId);
+            if (pendingCount >= 1) {
+              socket.emit('error', {
+                message: 'Message request pending. You can only send 1 message until the recipient replies or accepts your friend request.'
+              });
+              return;
+            }
           }
         }
 
@@ -280,6 +313,19 @@ module.exports = (io) => {
         const targetUserId = parseInt(toUserId || data.targetUserId);
         if (!targetUserId || isNaN(targetUserId)) {
           socket.emit('call:error', { message: 'Invalid target user ID' });
+          return;
+        }
+
+        // Strict Server-Side Calling Checks
+        const isBlocked = await User.isBlockedBetween(user.id, targetUserId);
+        if (isBlocked) {
+          socket.emit('call:error', { message: 'Cannot call blocked user' });
+          return;
+        }
+
+        const isFriend = await FriendRequest.isFriend(user.id, targetUserId);
+        if (!isFriend) {
+          socket.emit('call:error', { message: 'Calls are only allowed between friends' });
           return;
         }
 
