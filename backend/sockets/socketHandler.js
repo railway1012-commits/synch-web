@@ -144,28 +144,24 @@ module.exports = (io) => {
         // 1. Broadcast directly to chat room for instant real-time live delivery
         const chatIdNum = parseInt(chat.id);
         io.to(`chat:${chatIdNum}`).emit('message:new', messageJSON);
-        io.to(`chat:${String(chatIdNum)}`).emit('message:new', messageJSON);
 
-        // 2. Broadcast directly to every participant's personal room (strictly deduplicated)
+        // 2. Broadcast directly to other participants' personal rooms (strictly for background notifications)
+        const currentUserIdNum = parseInt(user.id || user._id);
         const seenPids = new Set();
         (chat.participants || []).forEach(participant => {
           const pid = parseInt(participant._id || participant.id);
-          if (!pid || isNaN(pid) || seenPids.has(pid)) return;
+          if (!pid || isNaN(pid) || seenPids.has(pid) || pid === currentUserIdNum) return;
           seenPids.add(pid);
 
           io.to(`user:${pid}`).emit('message:new', messageJSON);
-          io.to(`user:${String(pid)}`).emit('message:new', messageJSON);
-          if (pid !== parseInt(user.id || user._id)) {
-            const notifPayload = {
-              message: messageJSON,
-              chat: {
-                _id: chat.id,
-                participants: chat.participants
-              }
-            };
-            io.to(`user:${pid}`).emit('message:notification', notifPayload);
-            io.to(`user:${String(pid)}`).emit('message:notification', notifPayload);
-          }
+          const notifPayload = {
+            message: messageJSON,
+            chat: {
+              _id: chat.id,
+              participants: chat.participants
+            }
+          };
+          io.to(`user:${pid}`).emit('message:notification', notifPayload);
         });
       } catch (error) {
         console.error('Socket message:send error:', error);
@@ -193,23 +189,49 @@ module.exports = (io) => {
 
     socket.on('message:delete', async (data) => {
       try {
-        const { messageId } = data;
+        const { messageId, deleteForEveryone = true } = data;
 
         const message = await Message.findById(parseInt(messageId));
-        if (!message || message.sender_id !== user.id) return;
-
-        await Message.delete(parseInt(messageId));
+        if (!message) return;
 
         const chatIdNum = parseInt(message.chat_id);
-        const delPayload = {
-          messageId: parseInt(messageId),
-          chatId: chatIdNum
-        };
-        io.to(`chat:${chatIdNum}`).emit('message:deleted', delPayload);
-        io.to(`chat:${String(chatIdNum)}`).emit('message:deleted', delPayload);
+        if (deleteForEveryone) {
+          if (message.sender_id !== user.id) return;
+          const createdAt = new Date(message.created_at).getTime();
+          if (Date.now() - createdAt > 24 * 60 * 60 * 1000) return;
+
+          await Message.delete(parseInt(messageId));
+
+          const delPayload = {
+            messageId: parseInt(messageId),
+            chatId: chatIdNum,
+            deletedForEveryone: true
+          };
+          io.to(`chat:${chatIdNum}`).emit('message:deleted', delPayload);
+        } else {
+          await Message.deleteForUser(parseInt(messageId), user.id);
+          socket.emit('message:deleted', {
+            messageId: parseInt(messageId),
+            chatId: chatIdNum,
+            deletedForEveryone: false
+          });
+        }
       } catch (error) {
         socket.emit('error', { message: 'Error deleting message' });
       }
+    });
+
+    socket.on('message:delete-for-me', async (data) => {
+      try {
+        const { messageId, messageIds } = data;
+        if (messageIds && Array.isArray(messageIds)) {
+          await Message.deleteForUserBulk(messageIds, user.id);
+          socket.emit('message:deleted-for-me', { messageIds });
+        } else if (messageId) {
+          await Message.deleteForUser(parseInt(messageId), user.id);
+          socket.emit('message:deleted-for-me', { messageId: parseInt(messageId) });
+        }
+      } catch (e) {}
     });
 
     socket.on('message:reaction', async (data) => {

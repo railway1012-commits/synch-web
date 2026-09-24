@@ -163,21 +163,55 @@ exports.deleteMessage = async (req, res) => {
       return res.status(404).json({ error: 'Message not found' });
     }
 
+    const createdAt = new Date(message.created_at).getTime();
+    if (Date.now() - createdAt > 24 * 60 * 60 * 1000) {
+      return res.status(400).json({ error: 'Messages older than 24 hours cannot be deleted for everyone' });
+    }
+
     await Message.delete(parseInt(messageId));
 
     if (io) {
       const chatIdNum = parseInt(message.chat_id);
       const delPayload = {
         messageId: parseInt(messageId),
-        chatId: chatIdNum
+        chatId: chatIdNum,
+        deletedForEveryone: true
       };
       io.to(`chat:${chatIdNum}`).emit('message:deleted', delPayload);
-      io.to(`chat:${String(chatIdNum)}`).emit('message:deleted', delPayload);
     }
 
-    res.json({ message: 'Message deleted successfully' });
+    res.json({ message: 'Message deleted for everyone successfully' });
   } catch (error) {
     res.status(500).json({ error: 'Error deleting message' });
+  }
+};
+
+exports.deleteForMe = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const message = await Message.findById(parseInt(messageId));
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    await Message.deleteForUser(parseInt(messageId), req.user.id);
+    res.json({ success: true, messageId: parseInt(messageId) });
+  } catch (error) {
+    res.status(500).json({ error: 'Error deleting message for self' });
+  }
+};
+
+exports.deleteForMeBulk = async (req, res) => {
+  try {
+    const { messageIds } = req.body;
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({ error: 'messageIds required' });
+    }
+
+    await Message.deleteForUserBulk(messageIds, req.user.id);
+    res.json({ success: true, count: messageIds.length });
+  } catch (error) {
+    res.status(500).json({ error: 'Error deleting messages for self' });
   }
 };
 

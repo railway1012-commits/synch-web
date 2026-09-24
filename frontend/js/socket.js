@@ -120,6 +120,12 @@ function initSocket() {
     }
   });
 
+  socket.on('message:deleted-for-me', (data) => {
+    if (typeof onMessageDeleted === 'function') {
+      onMessageDeleted({ ...data, deletedForEveryone: false });
+    }
+  });
+
   socket.on('message:reacted', (data) => {
     if (typeof onMessageReacted === 'function') {
       onMessageReacted(data);
@@ -390,10 +396,18 @@ function editMessage(messageId, content) {
 }
 
 
-function deleteMessage(messageId) {
+function deleteMessageSocket(messageId, deleteForEveryone = true) {
   if (socket && socket.connected) {
-    socket.emit('message:delete', { messageId });
+    if (deleteForEveryone) {
+      socket.emit('message:delete', { messageId, deleteForEveryone: true });
+    } else {
+      socket.emit('message:delete-for-me', { messageId });
+    }
   }
+}
+
+function deleteMessage(messageId, deleteForEveryone = true) {
+  deleteMessageSocket(messageId, deleteForEveryone);
 }
 
 function addReaction(messageId, emoji) {

@@ -133,6 +133,15 @@ async function initDatabase() {
         PRIMARY KEY (message_id, user_id)
       );
 
+      CREATE TABLE IF NOT EXISTS message_deletions (
+        id SERIAL PRIMARY KEY,
+        message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (message_id, user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_message_deletions_user ON message_deletions(user_id, message_id);
+
       CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id);
       CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
       CREATE INDEX IF NOT EXISTS idx_chat_participants_user ON chat_participants(user_id);
@@ -877,10 +886,11 @@ const Chat = {
   findByUserId: async (userId) => {
     const result = await pool.query(
       `SELECT c.*, 
-              m.content as last_message_content, 
-              m.type as last_message_type, 
-              m.created_at as last_message_time,
-              m.sender_id as last_message_sender_id,
+              lm.id as last_message_id_real,
+              lm.content as last_message_content, 
+              lm.type as last_message_type, 
+              lm.created_at as last_message_time,
+              lm.sender_id as last_message_sender_id,
               (
                 SELECT COUNT(*) 
                 FROM messages msg
@@ -891,10 +901,24 @@ const Chat = {
                     SELECT 1 FROM message_reads mr 
                     WHERE mr.message_id = msg.id AND mr.user_id = $1
                   )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM message_deletions md
+                    WHERE md.message_id = msg.id AND md.user_id = $1
+                  )
               )::int as unread_count
        FROM chats c
        JOIN chat_participants cp ON c.id = cp.chat_id
-       LEFT JOIN messages m ON c.last_message_id = m.id
+       LEFT JOIN LATERAL (
+         SELECT m.id, m.content, m.type, m.created_at, m.sender_id
+         FROM messages m
+         WHERE m.chat_id = c.id
+           AND NOT EXISTS (
+             SELECT 1 FROM message_deletions md
+             WHERE md.message_id = m.id AND md.user_id = $1
+           )
+         ORDER BY m.created_at DESC
+         LIMIT 1
+       ) lm ON TRUE
        WHERE cp.user_id = $1
        ORDER BY c.updated_at DESC`,
       [userId]
@@ -903,8 +927,10 @@ const Chat = {
     for (const chat of result.rows) {
       chat.participants = await Chat.getParticipants(chat.id);
       chat.unreadCount = parseInt(chat.unread_count) || 0;
-      if (chat.last_message_id) {
+      if (chat.last_message_id_real) {
         chat.lastMessage = {
+          id: chat.last_message_id_real,
+          _id: chat.last_message_id_real,
           content: chat.last_message_content,
           type: chat.last_message_type,
           senderId: chat.last_message_sender_id,
@@ -1038,7 +1064,7 @@ const Message = {
     return msg;
   },
 
-  findByChatId: async (chatId, limit = 50, before = null) => {
+  findByChatId: async (chatId, limit = 50, before = null, userId = null) => {
     let query;
     let params;
 
@@ -1087,11 +1113,14 @@ const Message = {
       JOIN users u ON m.sender_id = u.id
     `;
 
+    const uId = userId ? parseInt(userId) : null;
+    const deletionFilter = uId ? ` AND NOT EXISTS (SELECT 1 FROM message_deletions md WHERE md.message_id = m.id AND md.user_id = ${uId})` : '';
+
     if (before) {
-      query = `${baseSelect} WHERE m.chat_id = $1 AND m.created_at < $2 ORDER BY m.created_at DESC LIMIT $3`;
+      query = `${baseSelect} WHERE m.chat_id = $1${deletionFilter} AND m.created_at < $2 ORDER BY m.created_at DESC LIMIT $3`;
       params = [chatId, before, limit];
     } else {
-      query = `${baseSelect} WHERE m.chat_id = $1 ORDER BY m.created_at DESC LIMIT $2`;
+      query = `${baseSelect} WHERE m.chat_id = $1${deletionFilter} ORDER BY m.created_at DESC LIMIT $2`;
       params = [chatId, limit];
     }
 
@@ -1125,9 +1154,37 @@ const Message = {
 
   delete: async (id) => {
     await pool.query(
-      "UPDATE messages SET deleted = TRUE, deleted_at = CURRENT_TIMESTAMP, content = '' WHERE id = $1",
+      "UPDATE messages SET deleted = TRUE, deleted_at = CURRENT_TIMESTAMP, content = 'This message was deleted', type = 'DELETED' WHERE id = $1",
       [id]
     );
+  },
+
+  deleteForUser: async (messageId, userId) => {
+    const mId = parseInt(messageId);
+    const uId = parseInt(userId);
+    if (!mId || !uId || isNaN(mId) || isNaN(uId)) return;
+    await pool.query(
+      `INSERT INTO message_deletions (message_id, user_id) 
+       VALUES ($1, $2) 
+       ON CONFLICT (message_id, user_id) DO NOTHING`,
+      [mId, uId]
+    );
+  },
+
+  deleteForUserBulk: async (messageIds, userId) => {
+    const uId = parseInt(userId);
+    if (!Array.isArray(messageIds) || !uId) return;
+    for (const mId of messageIds) {
+      const parsedId = parseInt(mId);
+      if (parsedId && !isNaN(parsedId)) {
+        await pool.query(
+          `INSERT INTO message_deletions (message_id, user_id) 
+           VALUES ($1, $2) 
+           ON CONFLICT (message_id, user_id) DO NOTHING`,
+          [parsedId, uId]
+        );
+      }
+    }
   },
 
   togglePin: async (id) => {
@@ -1214,13 +1271,22 @@ const Message = {
 
   toJSON: (msg) => ({
     _id: msg.id,
+    id: msg.id,
     chat: msg.chat_id,
+    chatId: msg.chat_id,
+    chat_id: msg.chat_id,
+    senderId: msg.sender_id || (msg.sender ? (msg.sender._id || msg.sender.id) : null),
+    sender_id: msg.sender_id || (msg.sender ? (msg.sender._id || msg.sender.id) : null),
     sender: msg.sender,
     type: msg.type,
     content: msg.content,
     mediaUrl: msg.media_url,
+    media_url: msg.media_url,
     mediaDuration: msg.media_duration,
+    media_duration: msg.media_duration,
     replyTo: msg.replyTo ? Message.toJSON(msg.replyTo) : null,
+    replyToId: msg.reply_to_id,
+    reply_to_id: msg.reply_to_id,
     reactions: msg.reactions || [],
     edited: !!msg.edited,
     editedAt: msg.edited_at,
@@ -1228,7 +1294,10 @@ const Message = {
     deletedAt: msg.deleted_at,
     pinned: !!msg.pinned,
     read: !!msg.read || !!msg.is_read,
-    createdAt: msg.created_at
+    isRead: !!msg.read || !!msg.is_read,
+    is_read: !!msg.read || !!msg.is_read,
+    createdAt: msg.created_at,
+    created_at: msg.created_at
   })
 };
 

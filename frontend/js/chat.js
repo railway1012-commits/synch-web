@@ -506,6 +506,7 @@ function renderChatList(searchQuery = '') {
   const savedNicknames = JSON.parse(localStorage.getItem('synch_nicknames') || '{}');
   updateRailUnreadBadge();
   const filteredChats = chats.filter(chat => {
+    if (chat.type !== 'group' && !chat.lastMessage) return false;
     const otherParticipant = chat.participants?.find(p => p._id !== currentUser._id);
     const isUnavailable = otherParticipant?.isDeleted || otherParticipant?.username === 'Account Unavailable' || otherParticipant?.username?.startsWith('unavailable_');
     const displayName = isUnavailable ? 'Account Unavailable' : (savedNicknames[otherParticipant?._id] || (chat.type === 'group' ? chat.name : otherParticipant?.username));
@@ -525,10 +526,28 @@ function renderChatList(searchQuery = '') {
     const avatar = isUnavailable ? null : (chat.type === 'group' ? chat.avatar : otherParticipant?.avatar);
     const status = isUnavailable ? 'offline' : (otherParticipant?.status || 'offline');
     const lastMessage = chat.lastMessage;
-    const isOwnMessage = lastMessage?.sender?._id === currentUser._id || lastMessage?.senderId === currentUser._id;
-    const previewPrefix = isOwnMessage ? 'You: ' : '';
-    let previewText = lastMessage ? (lastMessage.type === 'voice' ? '🎤 Voice message' : lastMessage.type === 'image' ? '🖼️ Image' : lastMessage.content || '') : 'No messages yet';
-    const preview = lastMessage ? previewPrefix + previewText : previewText;
+    const myId = currentUser?._id || currentUser?.id;
+    const senderId = lastMessage?.sender?._id || lastMessage?.sender?.id || lastMessage?.senderId || lastMessage?.sender_id || (typeof lastMessage?.sender === 'object' ? null : lastMessage?.sender);
+    const isOwnMessage = !!(myId && senderId && String(senderId) === String(myId));
+    const isDeleted = !!(lastMessage?.deleted || lastMessage?.deletedForEveryone || lastMessage?.type === 'DELETED');
+    const previewPrefix = (isOwnMessage && !isDeleted) ? 'You: ' : '';
+    let previewText = 'No messages yet';
+    if (lastMessage) {
+      if (isDeleted) {
+        previewText = 'This message was deleted';
+      } else if (lastMessage.type === 'voice') {
+        previewText = '🎤 Voice message';
+      } else if (lastMessage.type === 'image') {
+        previewText = '🖼️ Image';
+      } else if (lastMessage.type === 'video') {
+        previewText = '📹 Video';
+      } else if (lastMessage.type === 'file') {
+        previewText = '📎 Attachment';
+      } else {
+        previewText = lastMessage.content || '';
+      }
+    }
+    const preview = previewPrefix + previewText;
     const unreadCount = chat.unreadCount || 0;
     return `
       <div class="chat-item ${currentChat?._id === chat._id ? 'active' : ''}" data-chat-id="${chat._id}" role="button">
@@ -584,12 +603,14 @@ function updateChatRestrictions(chat) {
   let otherReplyCount = 0;
   if (Array.isArray(messages)) {
     for (const m of messages) {
-      const sId = String(m.sender?._id || m.senderId || m.sender);
-      if (sId === String(myId)) mySentCount++;
-      else otherReplyCount++;
+      if (m.deleted || m.deletedForEveryone || m.type === 'DELETED') continue;
+      const sId = String(m.sender?._id || m.sender?.id || m.senderId || m.sender_id || m.sender || '');
+      if (sId && sId === String(myId)) mySentCount++;
+      else if (sId) otherReplyCount++;
     }
   }
-  const isMessageRequestWaiting = (!isFriend && chat.type !== 'group' && mySentCount >= 1 && otherReplyCount === 0);
+  const pendingUnanswered = chat.pendingUnanswered || 0;
+  const isMessageRequestWaiting = (!isFriend && chat.type !== 'group' && (pendingUnanswered >= 1 || (mySentCount >= 1 && otherReplyCount === 0)));
 
   const inputWrapper = document.querySelector('.message-input-wrapper');
   const blockedBanner = document.getElementById('blockedChatBanner');
@@ -629,7 +650,7 @@ function updateChatRestrictions(chat) {
     if (waitingBanner) waitingBanner.style.display = 'none';
     if (inputWrapper) inputWrapper.style.display = 'flex';
     if (introBanner) {
-      introBanner.style.display = (!isFriend && chat.type !== 'group' && mySentCount === 0) ? 'block' : 'none';
+      introBanner.style.display = (!isFriend && chat.type !== 'group' && mySentCount === 0 && pendingUnanswered === 0) ? 'block' : 'none';
     }
   }
 }
@@ -695,7 +716,16 @@ window.deleteChat = deleteChat;
 
 async function selectChat(chatId) {
   const numericId = parseInt(chatId);
-  const chat = chats.find(c => c._id === numericId || c._id === chatId);
+  let chat = chats.find(c => String(c._id) === String(chatId) || String(c.id) === String(chatId) || (numericId && (parseInt(c._id) === numericId || parseInt(c.id) === numericId)));
+  if (!chat) {
+    try {
+      const res = await fetchAPI(`/api/chats/${chatId}`);
+      if (res?.chat) {
+        chat = res.chat;
+        chats.unshift(chat);
+      }
+    } catch (e) {}
+  }
   if (!chat) return;
   if (currentChat) leaveChat(currentChat._id);
   currentChat = chat;
@@ -828,10 +858,13 @@ function formatDateSeparator(date) {
 
 function createMessageHTML(msg) {
   const myId = currentUser ? (currentUser._id || currentUser.id) : null;
-  const senderId = msg.sender?._id || msg.sender?.id || msg.senderId || (typeof msg.sender === 'object' ? null : msg.sender);
+  const senderId = msg.sender?._id || msg.sender?.id || msg.senderId || msg.sender_id || (typeof msg.sender === 'object' ? null : msg.sender);
   const isSent = !!(myId && senderId && String(senderId) === String(myId));
   const bubbleStyle = localStorage.getItem('synch_bubbleStyle') || 'modern';
-  if (msg.deleted) return `<div class="message ${isSent ? 'sent' : ''}" data-message-id="${msg._id}"><div class="message-content"><div class="message-bubble message-deleted" data-style="${bubbleStyle}"><span class="message-text">Message deleted</span></div></div></div>`;
+  const isDeleted = !!(msg.deleted || msg.deletedForEveryone || msg.type === 'DELETED');
+  if (isDeleted) {
+    return `<div class="message ${isSent ? 'sent' : ''}" data-message-id="${msg._id}"><div class="message-content"><div class="message-bubble message-deleted" data-style="${bubbleStyle}" style="font-style: italic; opacity: 0.75; display: inline-flex; align-items: center; gap: 6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg><span class="message-text">This message was deleted</span></div></div></div>`;
+  }
   let content = msg.replyTo ? `<div class="message-reply"><strong>${escapeHtml(msg.replyTo.sender?.username || 'User')}</strong><p>${escapeHtml(msg.replyTo.content?.substring(0, 50) || '')}</p></div>` : '';
   const safeMediaUrl = sanitizeUrl(msg.mediaUrl);
   
@@ -979,9 +1012,38 @@ elements.sendBtn?.addEventListener('click', handleSendMessage);
 function handleSendMessage() {
   const content = elements.messageInput.value.trim();
   if (!content || !currentChat) return;
+
+  const isFriend = currentChat.type === 'group' ? true : (currentChat.isFriend === true);
+  if (!isFriend && currentChat.type !== 'group') {
+    let mySentCount = 0;
+    let otherReplyCount = 0;
+    const myId = currentUser ? (currentUser._id || currentUser.id) : null;
+    if (Array.isArray(messages)) {
+      for (const m of messages) {
+        if (m.deleted || m.deletedForEveryone || m.type === 'DELETED') continue;
+        const sId = String(m.sender?._id || m.sender?.id || m.senderId || m.sender_id || m.sender || '');
+        if (sId && sId === String(myId)) mySentCount++;
+        else if (sId) otherReplyCount++;
+      }
+    }
+    const pendingUnanswered = currentChat.pendingUnanswered || 0;
+    if (pendingUnanswered >= 1 || (mySentCount >= 1 && otherReplyCount === 0)) {
+      showToast('You can only send 1 message until the recipient replies or accepts your friend request.', 'warning');
+      updateChatRestrictions(currentChat);
+      return;
+    }
+  }
+
   const editingId = elements.messageInput.dataset.editing;
-  if (editingId) editMessage(editingId, content);
-  else sendMessage({ chatId: currentChat._id, content, type: 'text', replyTo: replyingTo?._id || null });
+  if (editingId) {
+    editMessage(editingId, content);
+  } else {
+    sendMessage({ chatId: currentChat._id || currentChat.id, content, type: 'text', replyTo: replyingTo?._id || null });
+    if (!isFriend && currentChat.type !== 'group') {
+      currentChat.pendingUnanswered = (currentChat.pendingUnanswered || 0) + 1;
+      updateChatRestrictions(currentChat);
+    }
+  }
   elements.messageInput.value = '';
   elements.messageInput.style.height = 'auto';
   elements.sendBtn.disabled = true;
@@ -1064,11 +1126,46 @@ function cancelRecording() { if (mediaRecorder && isRecording) { mediaRecorder.s
 
 async function sendVoiceMessage(blob) {
   if (!currentChat) return;
-  const formData = new FormData(); formData.append('media', blob, 'voice.webm'); formData.append('chatId', currentChat._id); formData.append('type', 'voice'); formData.append('mediaDuration', Math.floor((Date.now() - recordingStartTime) / 1000));
+
+  const isFriend = currentChat.type === 'group' ? true : (currentChat.isFriend === true);
+  if (!isFriend && currentChat.type !== 'group') {
+    let mySentCount = 0;
+    let otherReplyCount = 0;
+    const myId = currentUser ? (currentUser._id || currentUser.id) : null;
+    if (Array.isArray(messages)) {
+      for (const m of messages) {
+        if (m.deleted || m.deletedForEveryone || m.type === 'DELETED') continue;
+        const sId = String(m.sender?._id || m.sender?.id || m.senderId || m.sender_id || m.sender || '');
+        if (sId && sId === String(myId)) mySentCount++;
+        else if (sId) otherReplyCount++;
+      }
+    }
+    const pendingUnanswered = currentChat.pendingUnanswered || 0;
+    if (pendingUnanswered >= 1 || (mySentCount >= 1 && otherReplyCount === 0)) {
+      showToast('You can only send 1 message until the recipient replies or accepts your friend request.', 'warning');
+      updateChatRestrictions(currentChat);
+      return;
+    }
+  }
+
+  const formData = new FormData();
+  formData.append('media', blob, 'voice.webm');
+  formData.append('chatId', currentChat._id || currentChat.id);
+  formData.append('type', 'voice');
+  formData.append('mediaDuration', Math.floor((Date.now() - recordingStartTime) / 1000));
   try {
     const res = await fetch('/api/messages', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
-    if (!res.ok) throw new Error('Failed to send voice');
-  } catch (e) { showToast(getFriendlyError(e.message), 'error'); }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to send voice');
+    }
+    if (!isFriend && currentChat.type !== 'group') {
+      currentChat.pendingUnanswered = (currentChat.pendingUnanswered || 0) + 1;
+      updateChatRestrictions(currentChat);
+    }
+  } catch (e) {
+    showToast(getFriendlyError(e.message), 'error');
+  }
 }
 
 // Global Audio Engine for Seekable Voice Memos
@@ -1165,11 +1262,25 @@ elements.imagePreviewModal?.addEventListener('click', (e) => { if (e.target === 
 
 function showContextMenu(e, messageId) {
   e.preventDefault(); e.stopPropagation();
-  contextMenuMessage = messages.find(m => m._id == messageId);
+  contextMenuMessage = messages.find(m => String(m._id) === String(messageId) || String(m.id) === String(messageId));
   if (!contextMenuMessage) return;
-  const isSent = (contextMenuMessage.sender?._id === currentUser._id || contextMenuMessage.senderId === currentUser._id);
-  elements.contextMenu.querySelector('[data-action="edit"]').style.display = isSent ? 'flex' : 'none';
-  elements.contextMenu.querySelector('[data-action="delete"]').style.display = isSent ? 'flex' : 'none';
+  const myId = currentUser ? (currentUser._id || currentUser.id) : null;
+  const senderId = contextMenuMessage.sender?._id || contextMenuMessage.sender?.id || contextMenuMessage.senderId || contextMenuMessage.sender_id || (typeof contextMenuMessage.sender === 'object' ? null : contextMenuMessage.sender);
+  const isSent = !!(myId && senderId && String(senderId) === String(myId));
+  const isDeleted = !!(contextMenuMessage.deleted || contextMenuMessage.deletedForEveryone || contextMenuMessage.type === 'DELETED');
+
+  const editItem = elements.contextMenu.querySelector('[data-action="edit"]');
+  const deleteItem = elements.contextMenu.querySelector('[data-action="delete"]');
+  const replyItem = elements.contextMenu.querySelector('[data-action="reply"]');
+  const copyItem = elements.contextMenu.querySelector('[data-action="copy"]');
+  const reactItem = elements.contextMenu.querySelector('[data-action="react"]');
+
+  if (editItem) editItem.style.display = (isSent && !isDeleted) ? 'flex' : 'none';
+  if (deleteItem) deleteItem.style.display = isDeleted ? 'none' : 'flex';
+  if (replyItem) replyItem.style.display = isDeleted ? 'none' : 'flex';
+  if (copyItem) copyItem.style.display = isDeleted ? 'none' : 'flex';
+  if (reactItem) reactItem.style.display = isDeleted ? 'none' : 'flex';
+
   elements.contextMenu.style.left = `${Math.min(e.clientX, window.innerWidth - 190)}px`;
   elements.contextMenu.style.top = `${Math.min(e.clientY, window.innerHeight - 260)}px`;
   elements.contextMenu.classList.add('active');
@@ -1177,6 +1288,128 @@ function showContextMenu(e, messageId) {
 
 function hideContextMenu() { elements.contextMenu?.classList.remove('active'); elements.reactionMenu?.classList.remove('active'); document.getElementById('chatContextMenu')?.classList.remove('active'); }
 document.addEventListener('click', hideContextMenu);
+
+async function deleteMessage(messageId) {
+  hideContextMenu();
+  const msg = messages.find(m => String(m._id) === String(messageId) || String(m.id) === String(messageId));
+  if (!msg) return;
+
+  const myId = currentUser ? (currentUser._id || currentUser.id) : null;
+  const senderId = msg.sender?._id || msg.sender?.id || msg.senderId || msg.sender_id || (typeof msg.sender === 'object' ? null : msg.sender);
+  const isSent = !!(myId && senderId && String(senderId) === String(myId));
+  const createdAt = new Date(msg.createdAt).getTime();
+  const isWithin24Hours = (Date.now() - createdAt) < (24 * 60 * 60 * 1000);
+  const canDeleteForEveryone = isSent && isWithin24Hours;
+
+  const modal = document.getElementById('deleteMessageModal');
+  const actionsContainer = document.getElementById('deleteMessageActions');
+
+  if (modal && actionsContainer) {
+    if (canDeleteForEveryone) {
+      actionsContainer.innerHTML = `
+        <button type="button" class="btn btn-secondary" id="btnDelForMe" style="flex: 1; min-height: 40px; border-radius: 12px; font-weight: 600; font-size: 13.5px;">Delete for me</button>
+        <button type="button" class="btn btn-danger" id="btnDelForEveryone" style="flex: 1; min-height: 40px; border-radius: 12px; font-weight: 600; font-size: 13.5px; background: #e53935; color: white;">Delete for everyone</button>
+      `;
+    } else {
+      actionsContainer.innerHTML = `
+        <button type="button" class="btn btn-secondary" data-close="deleteMessageModal" style="flex: 1; min-height: 40px; border-radius: 12px; font-weight: 600; font-size: 13.5px;">Cancel</button>
+        <button type="button" class="btn btn-danger" id="btnDelForMe" style="flex: 1; min-height: 40px; border-radius: 12px; font-weight: 600; font-size: 13.5px; background: #e53935; color: white;">Delete for me</button>
+      `;
+    }
+
+    const delForMeBtn = document.getElementById('btnDelForMe');
+    if (delForMeBtn) {
+      delForMeBtn.onclick = async () => {
+        closeModal('deleteMessageModal');
+        await performDeleteMessage(messageId, false);
+      };
+    }
+
+    const delForEveryoneBtn = document.getElementById('btnDelForEveryone');
+    if (delForEveryoneBtn) {
+      delForEveryoneBtn.onclick = async () => {
+        closeModal('deleteMessageModal');
+        await performDeleteMessage(messageId, true);
+      };
+    }
+
+    actionsContainer.querySelectorAll('[data-close]').forEach(btn => {
+      btn.onclick = () => closeModal('deleteMessageModal');
+    });
+
+    openModal('deleteMessageModal');
+  } else {
+    const confirmed = await showConfirm('Delete Message', 'Are you sure you want to delete this message?', 'Delete', true);
+    if (confirmed) {
+      await performDeleteMessage(messageId, canDeleteForEveryone);
+    }
+  }
+}
+
+async function performDeleteMessage(messageId, forEveryone) {
+  const numericMsgId = parseInt(messageId);
+  try {
+    if (forEveryone) {
+      if (typeof deleteMessageSocket === 'function') {
+        deleteMessageSocket(numericMsgId, true);
+      }
+      await fetchAPI(`/api/messages/${numericMsgId}`, { method: 'DELETE' }).catch(() => {});
+      const m = messages.find(item => String(item._id) === String(messageId) || String(item.id) === String(messageId));
+      if (m) {
+        m.deleted = true;
+        m.deletedForEveryone = true;
+        m.type = 'DELETED';
+        m.content = 'This message was deleted';
+        renderMessages();
+      }
+      showToast('Message deleted for everyone', 'success');
+    } else {
+      if (typeof deleteMessageSocket === 'function') {
+        deleteMessageSocket(numericMsgId, false);
+      }
+      await fetchAPI(`/api/messages/${numericMsgId}/delete-for-me`, { method: 'POST' }).catch(() => {});
+      messages = messages.filter(item => String(item._id) !== String(messageId) && String(item.id) !== String(messageId));
+      renderMessages();
+      showToast('Message deleted for you', 'success');
+    }
+
+    const chatKey = currentChat ? String(currentChat._id || currentChat.id) : null;
+    if (chatKey && messageCache.has(chatKey)) {
+      if (forEveryone) {
+        const cachedList = messageCache.get(chatKey);
+        const cm = cachedList?.find(item => String(item._id) === String(messageId) || String(item.id) === String(messageId));
+        if (cm) {
+          cm.deleted = true;
+          cm.deletedForEveryone = true;
+          cm.type = 'DELETED';
+          cm.content = 'This message was deleted';
+        }
+      } else {
+        const updatedList = (messageCache.get(chatKey) || []).filter(item => String(item._id) !== String(messageId) && String(item.id) !== String(messageId));
+        messageCache.set(chatKey, updatedList);
+      }
+      persistMessageCache();
+    }
+
+    if (currentChat) {
+      if (forEveryone) {
+        if (currentChat.lastMessage && (String(currentChat.lastMessage._id) === String(messageId) || String(currentChat.lastMessage.id) === String(messageId))) {
+          currentChat.lastMessage.deleted = true;
+          currentChat.lastMessage.deletedForEveryone = true;
+          currentChat.lastMessage.type = 'DELETED';
+          currentChat.lastMessage.content = 'This message was deleted';
+        }
+      } else {
+        const lastMsg = messages[messages.length - 1];
+        currentChat.lastMessage = lastMsg || null;
+      }
+      renderChatList(elements.searchChats ? elements.searchChats.value : '');
+    }
+  } catch (err) {
+    showToast(getFriendlyError(err.message), 'error');
+  }
+}
+window.deleteMessage = deleteMessage;
 
 elements.contextMenu?.querySelectorAll('.context-menu-item').forEach(item => {
   item.addEventListener('click', () => {
@@ -1565,7 +1798,13 @@ async function startNewChat(userId) {
     closeModal('newChatModal');
     closeModal('userInfoModal');
     await loadChats();
-    selectChat(data.chat._id);
+    const cId = data.chat?._id || data.chat?.id;
+    if (data.chat && !chats.some(c => String(c._id || c.id) === String(cId))) {
+      chats.unshift(data.chat);
+    }
+    if (cId) {
+      selectChat(cId);
+    }
   } catch (e) {
     showToast(getFriendlyError(e.message), 'error');
   }
@@ -3265,11 +3504,11 @@ function onNewMessage(message) {
   const isCurrentChat = !!(currentChatIdStr && msgChatIdStr && currentChatIdStr === msgChatIdStr);
 
   const myIdStr = currentUser ? String(currentUser._id || currentUser.id || '') : '';
-  const senderIdStr = String(message.sender?._id || message.sender?.id || message.senderId || (typeof message.sender === 'object' ? '' : message.sender || ''));
+  const senderIdStr = String(message.sender?._id || message.sender?.id || message.senderId || message.sender_id || (typeof message.sender === 'object' ? '' : message.sender || ''));
   const isSender = !!(myIdStr && senderIdStr && myIdStr === senderIdStr);
 
   if (isCurrentChat) {
-    const exists = messages.some(m => String(m._id) === msgIdStr);
+    const exists = messages.some(m => String(m._id || m.id) === msgIdStr);
     if (!exists) {
       messages.push(message);
       try {
@@ -3282,10 +3521,51 @@ function onNewMessage(message) {
     }
 
     if (!isSender) {
-      markMessagesAsRead([message._id], currentChat._id);
+      markMessagesAsRead([message._id || message.id], currentChat._id || currentChat.id);
+      currentChat.pendingUnanswered = 0;
     }
     updateChatRestrictions(currentChat);
   }
+
+  // Always update chat in sidebar list, last message, and unread badge
+  const targetChat = chats.find(c => String(c._id || c.id) === msgChatIdStr);
+  if (targetChat) {
+    targetChat.lastMessage = message;
+    if (!isCurrentChat && !isSender) {
+      targetChat.unreadCount = (targetChat.unreadCount || 0) + 1;
+    }
+    const cIdx = chats.indexOf(targetChat);
+    if (cIdx > 0) {
+      chats.splice(cIdx, 1);
+      chats.unshift(targetChat);
+    }
+    renderChatList(elements.searchChats ? elements.searchChats.value : '');
+    updateRailUnreadBadge();
+  } else {
+    // New chat created (e.g. message request from someone new)
+    loadChats();
+  }
+
+  // Also update message cache for this chat
+  if (msgChatIdStr) {
+    if (messageCache.has(msgChatIdStr)) {
+      const list = messageCache.get(msgChatIdStr);
+      if (!list.some(m => String(m._id) === msgIdStr)) {
+        list.push(message);
+        if (list.length > 80) list.shift();
+        persistMessageCache();
+      }
+    } else if (isCurrentChat) {
+      messageCache.set(msgChatIdStr, [message]);
+      persistMessageCache();
+    }
+  }
+
+  const settings = JSON.parse(localStorage.getItem('synch_settings') || '{}');
+  if (settings.messageSound !== false && !isSender) {
+    playNotificationSound();
+  }
+}
 
 function onUserBlockedEvent(data) {
   loadBlockedUsers();
@@ -3320,45 +3600,6 @@ function onUserUnblockedEvent(data) {
 window.onUserBlockedEvent = onUserBlockedEvent;
 window.onUserUnblockedEvent = onUserUnblockedEvent;
 
-  // Also update message cache for this chat
-  if (msgChatIdStr) {
-    if (messageCache.has(msgChatIdStr)) {
-      const list = messageCache.get(msgChatIdStr);
-      if (!list.some(m => String(m._id) === msgIdStr)) {
-        list.push(message);
-        if (list.length > 80) list.shift();
-        persistMessageCache();
-      }
-    } else if (isCurrentChat) {
-      messageCache.set(msgChatIdStr, [message]);
-      persistMessageCache();
-    }
-  }
-
-  const numericChatId = parseInt(message.chat);
-  const chat = chats.find(c => String(c._id) === msgChatIdStr || (numericChatId && parseInt(c._id) === numericChatId));
-  if (chat) {
-    chat.lastMessage = {
-      content: message.content,
-      type: message.type,
-      senderId: message.sender?._id || message.sender?.id || message.senderId,
-      createdAt: message.createdAt
-    };
-    if (!isCurrentChat && !isSender) {
-      chat.unreadCount = (chat.unreadCount || 0) + 1;
-    }
-    chats.sort((a, b) => new Date(b.lastMessage?.createdAt || b.updatedAt || 0) - new Date(a.lastMessage?.createdAt || a.updatedAt || 0));
-    renderChatList(elements.searchChats ? elements.searchChats.value : '');
-  } else {
-    loadChats();
-  }
-
-  const settings = JSON.parse(localStorage.getItem('synch_settings') || '{}');
-  if (settings.messageSound !== false && !isSender) {
-    playNotificationSound();
-  }
-}
-
 function onMessageEdited(message) {
   const index = messages.findIndex(m => String(m._id) === String(message._id));
   if (index !== -1) {
@@ -3378,23 +3619,59 @@ function onMessageEdited(message) {
 }
 
 function onMessageDeleted(data) {
-  const index = messages.findIndex(m => String(m._id) === String(data.messageId));
-  if (index !== -1) {
-    messages[index].deleted = true;
-    messages[index].content = '';
+  const messageId = data.messageId || data.id;
+  const deletedForEveryone = data.deletedForEveryone !== false;
+
+  if (deletedForEveryone) {
+    const index = messages.findIndex(m => String(m._id) === String(messageId) || String(m.id) === String(messageId));
+    if (index !== -1) {
+      messages[index].deleted = true;
+      messages[index].deletedForEveryone = true;
+      messages[index].type = 'DELETED';
+      messages[index].content = 'This message was deleted';
+      renderMessages();
+    }
+    let cacheUpdated = false;
+    for (const [cid, msgList] of messageCache.entries()) {
+      const cachedMsg = msgList.find(m => String(m._id) === String(messageId) || String(m.id) === String(messageId));
+      if (cachedMsg) {
+        cachedMsg.deleted = true;
+        cachedMsg.deletedForEveryone = true;
+        cachedMsg.type = 'DELETED';
+        cachedMsg.content = 'This message was deleted';
+        cacheUpdated = true;
+        break;
+      }
+    }
+    if (cacheUpdated) persistMessageCache();
+    if (currentChat && currentChat.lastMessage && (String(currentChat.lastMessage._id) === String(messageId) || String(currentChat.lastMessage.id) === String(messageId))) {
+      currentChat.lastMessage.deleted = true;
+      currentChat.lastMessage.deletedForEveryone = true;
+      currentChat.lastMessage.type = 'DELETED';
+      currentChat.lastMessage.content = 'This message was deleted';
+      renderChatList(elements.searchChats ? elements.searchChats.value : '');
+    }
+  } else {
+    // Deleted for me
+    const targetIds = (data.messageIds && Array.isArray(data.messageIds)) ? data.messageIds.map(String) : [String(messageId)];
+    messages = messages.filter(m => !targetIds.includes(String(m._id)) && !targetIds.includes(String(m.id)));
     renderMessages();
-  }
-  let cacheUpdated = false;
-  for (const [cid, msgList] of messageCache.entries()) {
-    const cachedMsg = msgList.find(m => String(m._id) === String(data.messageId));
-    if (cachedMsg) {
-      cachedMsg.deleted = true;
-      cachedMsg.content = '';
-      cacheUpdated = true;
-      break;
+    let cacheUpdated = false;
+    for (const [cid, msgList] of messageCache.entries()) {
+      const initialLen = msgList.length;
+      const filtered = msgList.filter(m => !targetIds.includes(String(m._id)) && !targetIds.includes(String(m.id)));
+      if (filtered.length !== initialLen) {
+        messageCache.set(cid, filtered);
+        cacheUpdated = true;
+      }
+    }
+    if (cacheUpdated) persistMessageCache();
+    if (currentChat) {
+      const lastMsg = messages[messages.length - 1];
+      currentChat.lastMessage = lastMsg || null;
+      renderChatList(elements.searchChats ? elements.searchChats.value : '');
     }
   }
-  if (cacheUpdated) persistMessageCache();
 }
 
 function onMessageReacted(data) {

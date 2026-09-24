@@ -14,6 +14,8 @@ router.post('/report', userController.submitReport);
 router.post('/:messageId/report', userController.submitReport);
 router.put('/:messageId', messageController.editMessage);
 router.delete('/:messageId', messageController.deleteMessage);
+router.post('/:messageId/delete-for-me', messageController.deleteForMe);
+router.post('/delete-for-me-bulk', messageController.deleteForMeBulk);
 router.post('/:messageId/reaction', messageController.addReaction);
 router.post('/:messageId/pin', messageController.pinMessage);
 router.post('/read', messageController.markAsRead);

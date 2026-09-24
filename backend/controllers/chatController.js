@@ -47,7 +47,9 @@ exports.getChats = async (req, res) => {
       };
     }));
 
-    res.json({ chats });
+    // Filter out 1-on-1 chats that have zero messages sent or received
+    const activeChats = chats.filter(c => c.type === 'group' || !!c.lastMessage);
+    res.json({ chats: activeChats });
   } catch (error) {
     console.error('Get chats error:', error);
     res.status(500).json({ error: 'Error fetching chats' });
@@ -203,7 +205,7 @@ exports.getMessages = async (req, res) => {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
-    const messages = (await Message.findByChatId(parseInt(chatId), parseInt(limit), before))
+    const messages = (await Message.findByChatId(parseInt(chatId), parseInt(limit), before, req.user.id))
       .map(msg => Message.toJSON(msg));
 
     res.json({ messages });
