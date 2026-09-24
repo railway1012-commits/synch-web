@@ -312,6 +312,36 @@ async function initDatabase() {
     await safeQuery(`CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);`);
     await safeQuery(`ALTER TABLE admin_audit_logs ADD COLUMN IF NOT EXISTS ip TEXT;`);
 
+    // Deduplicate legacy private chats between the same user pairs
+    try {
+      const dupRes = await client.query(`
+        SELECT cp1.user_id as u1, cp2.user_id as u2, array_agg(c.id ORDER BY c.id ASC) as chat_ids
+        FROM chats c
+        JOIN chat_participants cp1 ON c.id = cp1.chat_id
+        JOIN chat_participants cp2 ON c.id = cp2.chat_id AND cp1.user_id < cp2.user_id
+        WHERE c.type = 'private'
+        GROUP BY cp1.user_id, cp2.user_id
+        HAVING count(c.id) > 1
+      `);
+      for (const row of dupRes.rows) {
+        const keeperId = row.chat_ids[0];
+        for (let i = 1; i < row.chat_ids.length; i++) {
+          const dupId = row.chat_ids[i];
+          await client.query('UPDATE messages SET chat_id = $1 WHERE chat_id = $2', [keeperId, dupId]);
+          await client.query('DELETE FROM chat_participants WHERE chat_id = $1', [dupId]);
+          await client.query('DELETE FROM chats WHERE id = $1', [dupId]);
+        }
+        await client.query(`
+          UPDATE chats SET 
+            last_message_id = (SELECT id FROM messages WHERE chat_id = $1 ORDER BY created_at DESC LIMIT 1),
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `, [keeperId]);
+      }
+    } catch (dupErr) {
+      console.warn('Chat deduplication notice:', dupErr.message);
+    }
+
     console.log('PostgreSQL database initialized');
   } catch (err) {
     console.error('Error during database initialization:', err.message);
@@ -874,11 +904,22 @@ const Chat = {
       `SELECT c.* FROM chats c
        JOIN chat_participants cp1 ON c.id = cp1.chat_id AND cp1.user_id = $1
        JOIN chat_participants cp2 ON c.id = cp2.chat_id AND cp2.user_id = $2
-       WHERE c.type = 'private'`,
+       WHERE c.type = 'private'
+       ORDER BY c.updated_at DESC, c.id ASC`,
       [user1Id, user2Id]
     );
     if (result.rows.length === 0) return null;
     const chat = result.rows[0];
+    if (result.rows.length > 1) {
+      for (let i = 1; i < result.rows.length; i++) {
+        const dupId = result.rows[i].id;
+        try {
+          await pool.query('UPDATE messages SET chat_id = $1 WHERE chat_id = $2', [chat.id, dupId]);
+          await pool.query('DELETE FROM chat_participants WHERE chat_id = $1', [dupId]);
+          await pool.query('DELETE FROM chats WHERE id = $1', [dupId]);
+        } catch (e) {}
+      }
+    }
     chat.participants = await Chat.getParticipants(chat.id);
     return chat;
   },
@@ -924,6 +965,7 @@ const Chat = {
       [userId]
     );
     const chats = [];
+    const seenPrivatePeers = new Set();
     for (const chat of result.rows) {
       chat.participants = await Chat.getParticipants(chat.id);
       chat.unreadCount = parseInt(chat.unread_count) || 0;
@@ -936,6 +978,16 @@ const Chat = {
           senderId: chat.last_message_sender_id,
           createdAt: chat.last_message_time
         };
+      }
+      if (chat.type === 'private' && chat.participants?.length) {
+        const other = chat.participants.find(p => parseInt(p._id || p.id) !== parseInt(userId));
+        if (other) {
+          const otherId = parseInt(other._id || other.id);
+          if (seenPrivatePeers.has(otherId)) {
+            continue; // Deduplicate: keep only the latest private chat with this peer
+          }
+          seenPrivatePeers.add(otherId);
+        }
       }
       chats.push(chat);
     }
@@ -1252,6 +1304,21 @@ const Message = {
         [id, userId]
       );
     }
+  },
+
+  markChatAsRead: async (chatId, userId) => {
+    const cId = parseInt(chatId);
+    const uId = parseInt(userId);
+    if (!cId || !uId || isNaN(cId) || isNaN(uId)) return 0;
+    const result = await pool.query(
+      `INSERT INTO message_reads (message_id, user_id)
+       SELECT id, $2 FROM messages
+       WHERE chat_id = $1 AND sender_id != $2 AND deleted = FALSE
+       ON CONFLICT (message_id, user_id) DO NOTHING
+       RETURNING message_id`,
+      [cId, uId]
+    );
+    return result.rowCount || 0;
   },
 
   countPendingUnanswered: async (chatId, senderId, recipientId) => {

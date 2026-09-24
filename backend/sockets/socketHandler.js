@@ -58,12 +58,55 @@ module.exports = (io) => {
       status: 'online'
     });
 
-    socket.on('message:send', async (data) => {
+    socket.on('chat:join', (data) => {
+      const cId = parseInt(data?.chatId || data);
+      if (cId) {
+        socket.join(`chat:${cId}`);
+        socket.join(`chat:${String(cId)}`);
+      }
+    });
+
+    socket.on('chat:leave', (data) => {
+      const cId = parseInt(data?.chatId || data);
+      if (cId) {
+        socket.leave(`chat:${cId}`);
+        socket.leave(`chat:${String(cId)}`);
+      }
+    });
+
+    socket.on('chat:read', async (data) => {
+      try {
+        const cId = parseInt(data?.chatId || data);
+        if (!cId || isNaN(cId)) return;
+        await Message.markChatAsRead(cId, user.id);
+        const readPayload = { chatId: cId, userId: user.id };
+        io.to(`chat:${cId}`).emit('chat:read', readPayload);
+        io.to(`chat:${String(cId)}`).emit('chat:read', readPayload);
+        io.to(`chat:${cId}`).emit('message:read', readPayload);
+        io.to(`chat:${String(cId)}`).emit('message:read', readPayload);
+
+        const chat = await Chat.findById(cId);
+        (chat?.participants || []).forEach(p => {
+          const pid = parseInt(p._id || p.id);
+          if (pid) {
+            io.to(`user:${pid}`).emit('chat:read', readPayload);
+            io.to(`user:${String(pid)}`).emit('chat:read', readPayload);
+            io.to(`user:${pid}`).emit('message:read', readPayload);
+            io.to(`user:${String(pid)}`).emit('message:read', readPayload);
+          }
+        });
+      } catch (e) {
+        console.error('Socket chat:read error:', e);
+      }
+    });
+
+    socket.on('message:send', async (data, callback) => {
       try {
         const { chatId, content, type, replyTo, mediaUrl, mediaDuration } = data;
 
         const chat = await Chat.findById(parseInt(chatId));
         if (!chat || !(await Chat.isParticipant(parseInt(chatId), user.id))) {
+          if (typeof callback === 'function') callback({ error: 'Chat not found' });
           return;
         }
 
@@ -74,6 +117,7 @@ module.exports = (io) => {
             otherParticipantId = parseInt(other._id || other.id);
             if (other.isDeleted) {
               socket.emit('error', { message: 'This account is no longer available' });
+              if (typeof callback === 'function') callback({ error: 'This account is no longer available' });
               return;
             }
           }
@@ -84,6 +128,7 @@ module.exports = (io) => {
           const isBlocked = await User.isBlockedBetween(user.id, otherParticipantId);
           if (isBlocked) {
             socket.emit('error', { message: 'You cannot send messages to this user' });
+            if (typeof callback === 'function') callback({ error: 'You cannot send messages to this user' });
             return;
           }
         }
@@ -95,6 +140,7 @@ module.exports = (io) => {
             const mType = type || 'text';
             if (mType !== 'text' && mType !== 'voice') {
               socket.emit('error', { message: 'Only text and voice messages are allowed until friend request is accepted' });
+              if (typeof callback === 'function') callback({ error: 'Only text and voice messages allowed' });
               return;
             }
 
@@ -103,6 +149,7 @@ module.exports = (io) => {
               socket.emit('error', {
                 message: 'Message request pending. You can only send 1 message until the recipient replies or accepts your friend request.'
               });
+              if (typeof callback === 'function') callback({ error: 'Message request pending' });
               return;
             }
 
@@ -151,6 +198,7 @@ module.exports = (io) => {
             for (const row of wordsRes.rows) {
               if (lowerContent.includes(row.word.toLowerCase())) {
                 socket.emit('error', { message: `Message blocked: Contains restricted keyword "${row.word}"` });
+                if (typeof callback === 'function') callback({ error: 'Message blocked by word filter' });
                 return;
               }
             }
@@ -169,6 +217,10 @@ module.exports = (io) => {
 
         const messageJSON = Message.toJSON(message);
 
+        if (typeof callback === 'function') {
+          callback({ success: true, message: messageJSON });
+        }
+
         // 2. Shadowban Check: If user is shadowbanned, only return message to sender
         if (user.is_shadowbanned) {
           socket.emit('message:new', messageJSON);
@@ -178,8 +230,9 @@ module.exports = (io) => {
         // 1. Broadcast directly to chat room for instant real-time live delivery
         const chatIdNum = parseInt(chat.id);
         io.to(`chat:${chatIdNum}`).emit('message:new', messageJSON);
+        io.to(`chat:${String(chatIdNum)}`).emit('message:new', messageJSON);
 
-        // 2. Broadcast directly to other participants' personal rooms (strictly for background notifications)
+        // 2. Broadcast directly to other participants' personal rooms
         const currentUserIdNum = parseInt(user.id || user._id);
         const seenPids = new Set();
         (chat.participants || []).forEach(participant => {
@@ -188,6 +241,7 @@ module.exports = (io) => {
           seenPids.add(pid);
 
           io.to(`user:${pid}`).emit('message:new', messageJSON);
+          io.to(`user:${String(pid)}`).emit('message:new', messageJSON);
           const notifPayload = {
             message: messageJSON,
             chat: {
@@ -196,10 +250,12 @@ module.exports = (io) => {
             }
           };
           io.to(`user:${pid}`).emit('message:notification', notifPayload);
+          io.to(`user:${String(pid)}`).emit('message:notification', notifPayload);
         });
       } catch (error) {
         console.error('Socket message:send error:', error);
         socket.emit('error', { message: 'Error sending message' });
+        if (typeof callback === 'function') callback({ error: 'Error sending message' });
       }
     });
 

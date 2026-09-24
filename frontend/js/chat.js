@@ -476,12 +476,19 @@ async function loadChats() {
   try {
     const data = await fetchAPI('/api/chats');
     chats = data.chats || [];
+    if (currentChat && currentChat._id) {
+      const active = chats.find(c => String(c._id || c.id) === String(currentChat._id));
+      if (active) {
+        active.unreadCount = 0;
+      }
+    }
     localStorage.setItem('synch_chats_cache', JSON.stringify(chats));
     renderChatList(elements.searchChats ? elements.searchChats.value : '');
     if (currentChat && currentChat._id) {
       const updated = chats.find(c => String(c._id || c.id) === String(currentChat._id));
       if (updated) {
         Object.assign(currentChat, updated);
+        currentChat.unreadCount = 0;
         updateChatRestrictions(currentChat);
       }
     }
@@ -926,7 +933,18 @@ async function selectChat(chatId) {
   elements.chatView.style.display = 'flex';
   document.querySelector('.chat-app').classList.add('chat-open');
   renderChatList(elements.searchChats ? elements.searchChats.value : '');
+  updateRailUnreadBadge();
   updateChatRestrictions(chat);
+
+  // Call backend read API and emit socket event immediately
+  const activeChatId = chat._id || chat.id || chatId;
+  if (activeChatId) {
+    fetchAPI(`/api/chats/${activeChatId}/read`, { method: 'POST' }).catch(() => {});
+    if (typeof markChatAsRead === 'function') {
+      markChatAsRead(activeChatId);
+    }
+  }
+
   await loadMessages();
   startLiveChatSync();
 }
@@ -3817,7 +3835,12 @@ function onNewMessage(message) {
     }
 
     if (!isSender) {
-      markMessagesAsRead([message._id || message.id], currentChat._id || currentChat.id);
+      const activeChatId = currentChat._id || currentChat.id;
+      markMessagesAsRead([message._id || message.id], activeChatId);
+      fetchAPI(`/api/chats/${activeChatId}/read`, { method: 'POST' }).catch(() => {});
+      if (typeof markChatAsRead === 'function') {
+        markChatAsRead(activeChatId);
+      }
       currentChat.pendingUnanswered = 0;
     }
     updateChatRestrictions(currentChat);
@@ -3827,7 +3850,9 @@ function onNewMessage(message) {
   const targetChat = chats.find(c => String(c._id || c.id) === msgChatIdStr);
   if (targetChat) {
     targetChat.lastMessage = message;
-    if (!isCurrentChat && !isSender) {
+    if (isCurrentChat) {
+      targetChat.unreadCount = 0;
+    } else if (!isSender) {
       targetChat.unreadCount = (targetChat.unreadCount || 0) + 1;
     }
     const cIdx = chats.indexOf(targetChat);
@@ -4044,6 +4069,41 @@ function onMessageRead(data) {
     persistMessageCache();
   }
 }
+
+function onChatRead(data) {
+  if (!data || !data.chatId) return;
+  const targetChatId = String(data.chatId);
+  const myId = currentUser ? String(currentUser._id || currentUser.id || '') : '';
+  const isReaderSelf = !!(myId && String(data.userId) === myId);
+
+  // If reader is self, clear sidebar unread badge
+  const chat = chats.find(c => String(c._id || c.id) === targetChatId);
+  if (chat && isReaderSelf) {
+    chat.unreadCount = 0;
+    renderChatList(elements.searchChats ? elements.searchChats.value : '');
+    updateRailUnreadBadge();
+  }
+
+  // If chat is currently open, mark sent messages as read (double blue check)
+  if (currentChat && String(currentChat._id || currentChat.id) === targetChatId) {
+    if (!isReaderSelf) {
+      messages.forEach(m => {
+        m.read = true;
+      });
+      document.querySelectorAll('.message-status').forEach(el => {
+        el.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#0084FF" stroke-width="2" class="read" style="color: #0084FF;"><polyline points="20 6 9 17 4 12"/><polyline points="20 12 11 20 7 16"/></svg>';
+      });
+      if (messageCache.has(targetChatId)) {
+        const cached = messageCache.get(targetChatId);
+        if (Array.isArray(cached)) {
+          cached.forEach(m => { m.read = true; });
+          persistMessageCache();
+        }
+      }
+    }
+  }
+}
+window.onChatRead = onChatRead;
 
 function onTypingStart(data) {
   const currentChatIdStr = currentChat ? String(currentChat._id) : null;

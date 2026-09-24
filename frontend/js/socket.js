@@ -138,6 +138,12 @@ function initSocket() {
     }
   });
 
+  socket.on('chat:read', (data) => {
+    if (typeof onChatRead === 'function') {
+      onChatRead(data);
+    }
+  });
+
   socket.on('message:notification', (data) => {
     if (typeof onMessageNotification === 'function') {
       onMessageNotification(data);
@@ -443,6 +449,12 @@ function stopTyping(chatId) {
 function markMessagesAsRead(messageIds, chatId) {
   if (socket && socket.connected) {
     socket.emit('message:read', { messageIds, chatId });
+  }
+}
+
+function markChatAsRead(chatId) {
+  if (socket && socket.connected) {
+    socket.emit('chat:read', { chatId });
   }
 }
 

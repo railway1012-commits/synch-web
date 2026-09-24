@@ -565,4 +565,43 @@ exports.acceptChatRequest = async (req, res) => {
   }
 };
 
+exports.markChatAsRead = async (req, res) => {
+  try {
+    const chatId = parseInt(req.params.chatId);
+    if (!chatId || isNaN(chatId)) {
+      return res.status(400).json({ error: 'Valid chatId required' });
+    }
+
+    const chat = await Chat.findById(chatId);
+    if (!chat || !(await Chat.isParticipant(chatId, req.user.id))) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    await Message.markChatAsRead(chatId, req.user.id);
+
+    if (io) {
+      const readPayload = { chatId, userId: req.user.id };
+      io.to(`chat:${chatId}`).emit('chat:read', readPayload);
+      io.to(`chat:${String(chatId)}`).emit('chat:read', readPayload);
+      io.to(`chat:${chatId}`).emit('message:read', readPayload);
+      io.to(`chat:${String(chatId)}`).emit('message:read', readPayload);
+
+      (chat.participants || []).forEach(p => {
+        const pid = parseInt(p._id || p.id);
+        if (pid) {
+          io.to(`user:${pid}`).emit('chat:read', readPayload);
+          io.to(`user:${String(pid)}`).emit('chat:read', readPayload);
+          io.to(`user:${pid}`).emit('message:read', readPayload);
+          io.to(`user:${String(pid)}`).emit('message:read', readPayload);
+        }
+      });
+    }
+
+    res.json({ success: true, chatId });
+  } catch (error) {
+    console.error('Mark chat as read error:', error);
+    res.status(500).json({ error: 'Error marking chat as read' });
+  }
+};
+
 
