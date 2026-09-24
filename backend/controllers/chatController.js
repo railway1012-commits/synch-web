@@ -105,6 +105,8 @@ exports.createChat = async (req, res) => {
     const targetUserId = parseInt(req.body.participantId || req.body.userId);
     const { type, name } = req.body;
 
+    const myBlocked = (req.user.blocked_users || []).map(Number);
+
     if (type === 'private' || !type) {
       if (!targetUserId || isNaN(targetUserId)) {
         return res.status(400).json({ error: 'Valid participantId or userId is required' });
@@ -113,6 +115,14 @@ exports.createChat = async (req, res) => {
       const existingChat = await Chat.findPrivateChat(req.user.id, targetUserId);
 
       if (existingChat) {
+        const isBlockedByMe = myBlocked.includes(targetUserId);
+        const isBlocked = await User.isBlockedBetween(req.user.id, targetUserId);
+        const isFriend = await FriendRequest.isFriend(req.user.id, targetUserId);
+        let pendingUnanswered = 0;
+        if (!isFriend) {
+          pendingUnanswered = await Message.countPendingUnanswered(existingChat.id, req.user.id, targetUserId);
+        }
+
         return res.json({
           chat: {
             _id: existingChat.id,
@@ -120,7 +130,11 @@ exports.createChat = async (req, res) => {
             type: existingChat.type,
             name: existingChat.name,
             participants: existingChat.participants,
-            updatedAt: existingChat.updated_at
+            updatedAt: existingChat.updated_at,
+            isBlocked,
+            isBlockedByMe,
+            isFriend,
+            pendingUnanswered
           }
         });
       }
@@ -139,13 +153,30 @@ exports.createChat = async (req, res) => {
     }
 
     const fullChat = await Chat.findById(chat.id);
+    let isBlocked = false;
+    let isBlockedByMe = false;
+    let isFriend = true;
+    let pendingUnanswered = 0;
+    if (targetUserId) {
+      isBlockedByMe = myBlocked.includes(targetUserId);
+      isBlocked = await User.isBlockedBetween(req.user.id, targetUserId);
+      isFriend = await FriendRequest.isFriend(req.user.id, targetUserId);
+      if (!isFriend) {
+        pendingUnanswered = await Message.countPendingUnanswered(fullChat.id, req.user.id, targetUserId);
+      }
+    }
+
     const chatJSON = {
       _id: fullChat.id,
       id: fullChat.id,
       type: fullChat.type,
       name: fullChat.name,
       participants: fullChat.participants,
-      updatedAt: fullChat.updated_at
+      updatedAt: fullChat.updated_at,
+      isBlocked,
+      isBlockedByMe,
+      isFriend,
+      pendingUnanswered
     };
 
     if (io) {

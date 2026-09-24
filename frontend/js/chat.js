@@ -565,7 +565,7 @@ function updateChatRestrictions(chat) {
 
   const isBlockedByMe = chat.isBlockedByMe === true;
   const isBlocked = chat.isBlocked === true || isBlockedByMe;
-  const isFriend = chat.type === 'group' ? true : (chat.isFriend !== false);
+  const isFriend = chat.type === 'group' ? true : (chat.isFriend === true);
 
   // Header call buttons
   const startVoiceCallBtn = document.getElementById('startVoiceCallBtn');
@@ -4026,6 +4026,11 @@ function onMessageNotification(data) {
     else if (data.message?.type === 'video') bodyText = '🎬 Video';
     else if (data.message?.type === 'file') bodyText = '📁 Document';
     else if (data.message?.content) bodyText = data.message.content;
+  }
+
+  // Ensure chat list and unread badges stay in sync
+  if (typeof loadChats === 'function') {
+    loadChats();
   }
 
   showDesktopNotification(senderName, {

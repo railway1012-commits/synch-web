@@ -199,7 +199,7 @@ exports.updateAvatar = async (req, res) => {
 exports.getIncomingRequests = async (req, res) => {
   try {
     const requests = await FriendRequest.getIncoming(req.user.id);
-    res.json({ requests });
+    res.json({ requests, incoming: requests });
   } catch (error) {
     console.error('Get incoming requests error:', error);
     res.status(500).json({ error: 'Error fetching friend requests' });
@@ -209,7 +209,7 @@ exports.getIncomingRequests = async (req, res) => {
 exports.getOutgoingRequests = async (req, res) => {
   try {
     const requests = await FriendRequest.getOutgoing(req.user.id);
-    res.json({ requests });
+    res.json({ requests, outgoing: requests });
   } catch (error) {
     console.error('Get outgoing requests error:', error);
     res.status(500).json({ error: 'Error fetching outgoing requests' });
@@ -218,8 +218,8 @@ exports.getOutgoingRequests = async (req, res) => {
 
 exports.sendFriendRequest = async (req, res) => {
   try {
-    const { receiverId } = req.body;
-    const targetUserId = parseInt(receiverId);
+    const rawTarget = req.body.receiverId || req.body.targetUserId || req.body.userId || req.body.recipientId || req.body.id;
+    const targetUserId = parseInt(rawTarget);
 
     if (!targetUserId || targetUserId === req.user.id) {
       return res.status(400).json({ error: 'Invalid user' });
@@ -241,9 +241,25 @@ exports.sendFriendRequest = async (req, res) => {
       io.to(`user:${targetUserId}`).emit('friend:request_received', {
         request: {
           _id: request.id,
+          id: request.id,
+          senderId: req.user.id,
+          receiverId: targetUserId,
           status: request.status,
           createdAt: request.created_at,
-          user: User.toPublicJSON(req.user)
+          user: User.toPublicJSON(req.user),
+          sender: User.toPublicJSON(req.user)
+        }
+      });
+      io.to(`user:${req.user.id}`).emit('friend:request_sent', {
+        request: {
+          _id: request.id,
+          id: request.id,
+          senderId: req.user.id,
+          receiverId: targetUserId,
+          status: request.status,
+          createdAt: request.created_at,
+          user: User.toPublicJSON(targetUser),
+          receiver: User.toPublicJSON(targetUser)
         }
       });
     }

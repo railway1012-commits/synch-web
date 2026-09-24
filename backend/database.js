@@ -1261,50 +1261,72 @@ const FriendRequest = {
 
   getIncoming: async (userId) => {
     const result = await pool.query(
-      `SELECT fr.id, fr.status, fr.created_at,
-              u.id as user_id, u.username, u.avatar, u.status as user_status, u.last_seen
+      `SELECT fr.id, fr.sender_id, fr.receiver_id, fr.status, fr.created_at,
+              u.id as user_id, u.username, u.display_name, u.avatar, u.status as user_status, u.last_seen
        FROM friend_requests fr
        JOIN users u ON fr.sender_id = u.id
        WHERE fr.receiver_id = $1 AND fr.status = 'pending' AND u.is_deleted = FALSE
        ORDER BY fr.created_at DESC`,
       [userId]
     );
-    return result.rows.map(r => ({
-      _id: r.id,
-      status: r.status,
-      createdAt: r.created_at,
-      user: {
+    return result.rows.map(r => {
+      const senderUser = {
         _id: r.user_id,
+        id: r.user_id,
         username: r.username,
+        displayName: r.display_name,
         avatar: r.avatar,
         status: r.user_status,
         lastSeen: r.last_seen
-      }
-    }));
+      };
+      return {
+        _id: r.id,
+        id: r.id,
+        senderId: r.sender_id,
+        sender_id: r.sender_id,
+        receiverId: r.receiver_id,
+        receiver_id: r.receiver_id,
+        status: r.status,
+        createdAt: r.created_at,
+        sender: senderUser,
+        user: senderUser
+      };
+    });
   },
 
   getOutgoing: async (userId) => {
     const result = await pool.query(
-      `SELECT fr.id, fr.status, fr.created_at,
-              u.id as user_id, u.username, u.avatar, u.status as user_status, u.last_seen
+      `SELECT fr.id, fr.sender_id, fr.receiver_id, fr.status, fr.created_at,
+              u.id as user_id, u.username, u.display_name, u.avatar, u.status as user_status, u.last_seen
        FROM friend_requests fr
        JOIN users u ON fr.receiver_id = u.id
        WHERE fr.sender_id = $1 AND fr.status = 'pending' AND u.is_deleted = FALSE
        ORDER BY fr.created_at DESC`,
       [userId]
     );
-    return result.rows.map(r => ({
-      _id: r.id,
-      status: r.status,
-      createdAt: r.created_at,
-      user: {
+    return result.rows.map(r => {
+      const receiverUser = {
         _id: r.user_id,
+        id: r.user_id,
         username: r.username,
+        displayName: r.display_name,
         avatar: r.avatar,
         status: r.user_status,
         lastSeen: r.last_seen
-      }
-    }));
+      };
+      return {
+        _id: r.id,
+        id: r.id,
+        senderId: r.sender_id,
+        sender_id: r.sender_id,
+        receiverId: r.receiver_id,
+        receiver_id: r.receiver_id,
+        status: r.status,
+        createdAt: r.created_at,
+        receiver: receiverUser,
+        user: receiverUser
+      };
+    });
   },
 
   accept: async (requestId, userId) => {
