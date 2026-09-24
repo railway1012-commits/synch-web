@@ -156,7 +156,10 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
-    res.status(201).json({ message: messageJSON });
+    res.status(201).json({
+      ...messageJSON,
+      message: messageJSON
+    });
   } catch (error) {
     console.error('Send message error:', error);
     res.status(500).json({ error: 'Error sending message' });

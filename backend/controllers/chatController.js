@@ -277,11 +277,30 @@ exports.deleteChat = async (req, res) => {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
+    if (chat.type === 'private' && chat.participants?.length >= 2) {
+      const other = chat.participants.find(p => parseInt(p._id || p.id) !== parseInt(req.user.id));
+      if (other) {
+        const otherId = parseInt(other._id || other.id);
+        await FriendRequest.removeFriendship(req.user.id, otherId);
+        if (io) {
+          io.to(`user:${otherId}`).emit('friend:request_declined', {
+            receiverId: req.user.id,
+            chatId: parseInt(chatId)
+          });
+          io.to(`user:${req.user.id}`).emit('friend:request_declined', {
+            receiverId: req.user.id,
+            chatId: parseInt(chatId)
+          });
+        }
+      }
+    }
+
     await Chat.delete(parseInt(chatId));
 
     if (io) {
       chat.participants.forEach(p => {
         io.to(`user:${p._id}`).emit('chat:deleted', { chatId: parseInt(chatId) });
+        io.to(`user:${String(p._id)}`).emit('chat:deleted', { chatId: parseInt(chatId) });
       });
     }
 
@@ -544,15 +563,30 @@ exports.acceptChatRequest = async (req, res) => {
       const uMe = await User.findById(req.user.id);
       const uOther = await User.findById(otherId);
 
-      io.to(`chat:${chat.id}`).emit('chat:request_accepted', {
+      const acceptPayload = {
         chatId: chat.id,
         acceptedBy: req.user.id
-      });
+      };
+      io.to(`chat:${chat.id}`).emit('chat:request_accepted', acceptPayload);
+      io.to(`chat:${String(chat.id)}`).emit('chat:request_accepted', acceptPayload);
+      io.to(`user:${otherId}`).emit('chat:request_accepted', acceptPayload);
+      io.to(`user:${String(otherId)}`).emit('chat:request_accepted', acceptPayload);
+      io.to(`user:${req.user.id}`).emit('chat:request_accepted', acceptPayload);
+      io.to(`user:${String(req.user.id)}`).emit('chat:request_accepted', acceptPayload);
+
       io.to(`user:${otherId}`).emit('friend:request_accepted', {
         user: User.toPublicJSON(uMe),
         chat: chatJSON
       });
+      io.to(`user:${String(otherId)}`).emit('friend:request_accepted', {
+        user: User.toPublicJSON(uMe),
+        chat: chatJSON
+      });
       io.to(`user:${req.user.id}`).emit('friend:request_accepted', {
+        user: User.toPublicJSON(uOther),
+        chat: chatJSON
+      });
+      io.to(`user:${String(req.user.id)}`).emit('friend:request_accepted', {
         user: User.toPublicJSON(uOther),
         chat: chatJSON
       });

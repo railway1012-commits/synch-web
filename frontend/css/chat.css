@@ -4513,3 +4513,62 @@ select:focus-visible {
   letter-spacing: 0.3px;
 }
 
+/* Inline Chat Item Action Buttons (Accept / Decline) */
+.chat-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.chat-action-btn {
+  padding: 4px 12px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: all 0.18s ease;
+  line-height: 1.3;
+}
+.chat-action-btn.accept-btn {
+  background: var(--accent, #0084ff);
+  color: #fff;
+}
+.chat-action-btn.accept-btn:hover {
+  background: #0070d6;
+  transform: translateY(-1px);
+}
+.chat-action-btn.decline-btn {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+.chat-action-btn.decline-btn:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.4);
+  transform: translateY(-1px);
+}
+
+/* Chat Section Headers */
+.chat-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted, #8e8e93);
+}
+.chat-section-badge {
+  background: rgba(0, 132, 255, 0.18);
+  color: var(--accent, #0084ff);
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+

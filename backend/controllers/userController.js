@@ -309,28 +309,37 @@ exports.acceptFriendRequest = async (req, res) => {
 
     const { request, chat } = result;
 
-    if (io) {
-      const chatJSON = {
-        _id: chat.id,
-        type: chat.type,
-        name: chat.name,
-        participants: chat.participants,
-        updatedAt: chat.updated_at
-      };
+    const chatJSON = {
+      _id: chat.id,
+      id: chat.id,
+      type: chat.type,
+      name: chat.name,
+      participants: chat.participants,
+      updatedAt: chat.updated_at,
+      isFriend: true
+    };
 
+    if (io) {
       // Notify sender
       io.to(`user:${request.sender_id}`).emit('friend:request_accepted', {
         requestId: request.id,
         user: User.toPublicJSON(req.user),
         chat: chatJSON
       });
+      io.to(`user:${String(request.sender_id)}`).emit('friend:request_accepted', {
+        requestId: request.id,
+        user: User.toPublicJSON(req.user),
+        chat: chatJSON
+      });
       io.to(`user:${request.sender_id}`).emit('chat:new', { chat: chatJSON });
+      io.to(`user:${String(request.sender_id)}`).emit('chat:new', { chat: chatJSON });
 
       // Notify receiver (current user)
       io.to(`user:${req.user.id}`).emit('chat:new', { chat: chatJSON });
+      io.to(`user:${String(req.user.id)}`).emit('chat:new', { chat: chatJSON });
     }
 
-    res.json({ message: 'Friend request accepted', chat });
+    res.json({ message: 'Friend request accepted', chat: chatJSON, isFriend: true });
   } catch (error) {
     console.error('Accept friend request error:', error);
     res.status(500).json({ error: 'Error accepting friend request' });

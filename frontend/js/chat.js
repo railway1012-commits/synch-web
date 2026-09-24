@@ -579,7 +579,7 @@ function renderChatList(searchQuery = '') {
     return;
   }
 
-  elements.chatList.innerHTML = filteredChats.map(chat => {
+  const renderSingleChatItem = (chat) => {
     const otherParticipant = chat.participants?.find(p => String(p._id || p.id) !== String(myId));
     const isUnavailable = otherParticipant?.isDeleted || otherParticipant?.username === 'Account Unavailable' || otherParticipant?.username?.startsWith('unavailable_');
     const nickname = isUnavailable ? null : savedNicknames[otherParticipant?._id];
@@ -610,6 +610,8 @@ function renderChatList(searchQuery = '') {
     const preview = previewPrefix + previewText;
     const unreadCount = chat.unreadCount || 0;
     const isChatRequest = !chat.isFriend && chat.type !== 'group';
+    const isIncomingRequest = isChatRequest && ((chat.incomingPendingUnanswered || 0) > 0 || (!isOwnMessage && (chat.pendingUnanswered || 0) === 0));
+
     return `
       <div class="chat-item ${currentChat?._id === chat._id ? 'active' : ''}" data-chat-id="${chat._id}" role="button">
         <div class="chat-item-avatar">
@@ -622,11 +624,34 @@ function renderChatList(searchQuery = '') {
             <span class="chat-time">${lastMessage ? formatTime(lastMessage.createdAt) : ''}</span>
           </div>
           <div class="chat-preview">${escapeHtml(preview.substring(0, 40))}</div>
+          ${isIncomingRequest ? `
+            <div class="chat-item-actions" onclick="event.stopPropagation()">
+              <button type="button" class="chat-action-btn accept-btn" onclick="event.stopPropagation(); window.acceptMessageRequestFromList('${chat._id}')">Accept</button>
+              <button type="button" class="chat-action-btn decline-btn" onclick="event.stopPropagation(); window.declineMessageRequestFromList('${chat._id}')">Decline</button>
+            </div>
+          ` : ''}
         </div>
         ${unreadCount > 0 ? `<div class="chat-item-badge">${unreadCount > 99 ? '99+' : unreadCount}</div>` : ''}
       </div>
     `;
-  }).join('');
+  };
+
+  if (chatFilter === 'all' && !searchQuery) {
+    const requestChats = filteredChats.filter(c => !c.isFriend && c.type !== 'group' && ((c.incomingPendingUnanswered || 0) > 0 || ((c.pendingUnanswered || 0) === 0 && (c.unreadCount || 0) > 0)));
+    const regularChats = filteredChats.filter(c => !requestChats.includes(c));
+    if (requestChats.length > 0 && regularChats.length > 0) {
+      elements.chatList.innerHTML = `
+        <div class="chat-section-header"><span>Message Requests</span><span class="chat-section-badge">${requestChats.length}</span></div>
+        ${requestChats.map(renderSingleChatItem).join('')}
+        <div class="chat-section-header"><span>Conversations</span></div>
+        ${regularChats.map(renderSingleChatItem).join('')}
+      `;
+    } else {
+      elements.chatList.innerHTML = filteredChats.map(renderSingleChatItem).join('');
+    }
+  } else {
+    elements.chatList.innerHTML = filteredChats.map(renderSingleChatItem).join('');
+  }
   elements.chatList.querySelectorAll('.chat-item').forEach(item => {
     item.addEventListener('click', () => selectChat(item.dataset.chatId));
     item.addEventListener('contextmenu', (e) => { e.preventDefault(); showChatContextMenu(e, item.dataset.chatId); });
@@ -749,15 +774,67 @@ function updateChatRestrictions(chat) {
 
 window.acceptMessageRequest = async function(chat) {
   if (!chat || !chat._id) return;
+  const cId = String(chat._id);
   try {
-    const res = await fetchAPI(`/api/chats/${chat._id}/accept-request`, { method: 'POST' });
+    const res = await fetchAPI(`/api/chats/${cId}/accept-request`, { method: 'POST' });
     showToast('Message request accepted!', 'success');
     chat.isFriend = true;
     chat.pendingUnanswered = 0;
     chat.incomingPendingUnanswered = 0;
     updateChatRestrictions(chat);
+    messageCache.delete(cId);
     await loadChats();
     updateFriendBadges();
+    await loadMessages();
+  } catch (err) {
+    showToast(getFriendlyError(err.message), 'error');
+  }
+};
+
+window.acceptMessageRequestFromList = async function(chatId) {
+  if (!chatId) return;
+  const cId = String(chatId);
+  try {
+    const res = await fetchAPI(`/api/chats/${cId}/accept-request`, { method: 'POST' });
+    showToast('Message request accepted!', 'success');
+    const targetChat = chats.find(c => String(c._id || c.id) === cId);
+    if (targetChat) {
+      targetChat.isFriend = true;
+      targetChat.pendingUnanswered = 0;
+      targetChat.incomingPendingUnanswered = 0;
+    }
+    messageCache.delete(cId);
+    await loadChats();
+    updateFriendBadges();
+    await selectChat(cId);
+  } catch (err) {
+    showToast(getFriendlyError(err.message), 'error');
+  }
+};
+
+window.declineMessageRequestFromList = async function(chatId) {
+  if (!chatId) return;
+  const cId = String(chatId);
+  const confirmed = await showConfirm(
+    'Decline Message Request',
+    'Are you sure you want to decline this message request? All messages will be permanently deleted and this person will be removed on both sides.',
+    'Decline',
+    true
+  );
+  if (!confirmed) return;
+  try {
+    await fetchAPI(`/api/chats/${cId}`, { method: 'DELETE' });
+    showToast('Message request declined', 'info');
+    messageCache.delete(cId);
+    persistMessageCache();
+    leaveChat(cId);
+    if (currentChat && String(currentChat._id || currentChat.id) === cId) {
+      currentChat = null;
+      elements.noChatSelected.style.display = 'flex';
+      elements.chatView.style.display = 'none';
+      document.querySelector('.chat-app').classList.remove('chat-open');
+    }
+    await loadChats();
   } catch (err) {
     showToast(getFriendlyError(err.message), 'error');
   }
@@ -765,19 +842,20 @@ window.acceptMessageRequest = async function(chat) {
 
 window.declineMessageRequest = async function(chat) {
   if (!chat || !chat._id) return;
+  const cId = String(chat._id);
   const confirmed = await showConfirm(
     'Decline Message Request',
-    'Are you sure you want to decline this message request? All messages and the conversation will be permanently deleted.',
+    'Are you sure you want to decline this message request? All messages will be permanently deleted and this person will be removed on both sides.',
     'Decline',
     true
   );
   if (!confirmed) return;
   try {
-    await fetchAPI(`/api/chats/${chat._id}`, { method: 'DELETE' });
+    await fetchAPI(`/api/chats/${cId}`, { method: 'DELETE' });
     showToast('Message request declined', 'info');
-    messageCache.delete(String(chat._id));
+    messageCache.delete(cId);
     persistMessageCache();
-    leaveChat(chat._id);
+    leaveChat(cId);
     currentChat = null;
     elements.noChatSelected.style.display = 'flex';
     elements.chatView.style.display = 'none';
@@ -1889,9 +1967,10 @@ async function acceptFriendReq(requestId) {
     showToast('Friend request accepted!', 'success');
     closeModal('newChatModal');
     updateFriendBadges();
-    await loadChats();
-    if (res.chat?._id) {
-      selectChat(res.chat._id);
+    const cId = res.chat?._id || res.chat?.id;
+    if (cId) {
+      messageCache.delete(String(cId));
+      selectChat(cId);
     }
   } catch (e) {
     showToast(getFriendlyError(e.message), 'error');
@@ -3945,11 +4024,13 @@ function onFriendRemoved(data) {
 
 function onChatRequestAccepted(data) {
   const chatId = String(data?.chatId);
+  messageCache.delete(chatId);
   if (currentChat && String(currentChat._id || currentChat.id) === chatId) {
     currentChat.isFriend = true;
     currentChat.pendingUnanswered = 0;
     currentChat.incomingPendingUnanswered = 0;
     updateChatRestrictions(currentChat);
+    loadMessages();
   }
   loadChats();
   updateFriendBadges();
