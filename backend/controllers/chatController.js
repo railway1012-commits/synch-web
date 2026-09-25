@@ -195,7 +195,11 @@ exports.createChat = async (req, res) => {
 
     if (io) {
       fullChat.participants.forEach(p => {
-        io.to(`user:${p._id}`).emit('chat:new', { chat: chatJSON });
+        const pId = p.id || p._id;
+        if (pId) {
+          io.to(`user:${pId}`).emit('chat:new', { chat: chatJSON });
+          io.to(`user:${String(pId)}`).emit('chat:new', { chat: chatJSON });
+        }
       });
     }
 
@@ -299,8 +303,11 @@ exports.deleteChat = async (req, res) => {
 
     if (io) {
       chat.participants.forEach(p => {
-        io.to(`user:${p._id}`).emit('chat:deleted', { chatId: parseInt(chatId) });
-        io.to(`user:${String(p._id)}`).emit('chat:deleted', { chatId: parseInt(chatId) });
+        const pId = p.id || p._id;
+        if (pId) {
+          io.to(`user:${pId}`).emit('chat:deleted', { chatId: parseInt(chatId) });
+          io.to(`user:${String(pId)}`).emit('chat:deleted', { chatId: parseInt(chatId) });
+        }
       });
     }
 

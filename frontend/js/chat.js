@@ -639,13 +639,18 @@ function renderChatList(searchQuery = '') {
   if (chatFilter === 'all' && !searchQuery) {
     const requestChats = filteredChats.filter(c => !c.isFriend && c.type !== 'group' && ((c.incomingPendingUnanswered || 0) > 0 || ((c.pendingUnanswered || 0) === 0 && (c.unreadCount || 0) > 0)));
     const regularChats = filteredChats.filter(c => !requestChats.includes(c));
-    if (requestChats.length > 0 && regularChats.length > 0) {
-      elements.chatList.innerHTML = `
+    if (requestChats.length > 0) {
+      let html = `
         <div class="chat-section-header"><span>Message Requests</span><span class="chat-section-badge">${requestChats.length}</span></div>
         ${requestChats.map(renderSingleChatItem).join('')}
-        <div class="chat-section-header"><span>Conversations</span></div>
-        ${regularChats.map(renderSingleChatItem).join('')}
       `;
+      if (regularChats.length > 0) {
+        html += `
+          <div class="chat-section-header"><span>Conversations</span></div>
+          ${regularChats.map(renderSingleChatItem).join('')}
+        `;
+      }
+      elements.chatList.innerHTML = html;
     } else {
       elements.chatList.innerHTML = filteredChats.map(renderSingleChatItem).join('');
     }
@@ -3870,10 +3875,11 @@ function onSocketDisconnected() {
 }
 
 function onNewChat(data) {
-  loadChats();
-  if (data.chat?._id) {
-    joinChat(data.chat._id);
+  const cId = data?.chat?._id || data?.chat?.id;
+  if (cId) {
+    joinChat(cId);
   }
+  loadChats();
 }
 
 const processedMessageIds = new Set();
@@ -3943,6 +3949,9 @@ function onNewMessage(message) {
     updateRailUnreadBadge();
   } else {
     // New chat created (e.g. message request from someone new)
+    if (msgChatIdStr) {
+      joinChat(msgChatIdStr);
+    }
     loadChats();
   }
 

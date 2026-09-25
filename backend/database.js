@@ -1039,6 +1039,7 @@ const Chat = {
     );
     return result.rows.map(p => ({
       _id: p.id,
+      id: p.id,
       username: p.is_deleted ? 'Account Unavailable' : p.username,
       displayName: p.display_name,
       avatar: p.is_deleted ? null : p.avatar,
