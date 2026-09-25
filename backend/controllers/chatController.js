@@ -18,6 +18,8 @@ exports.getChats = async (req, res) => {
       let isFriend = true;
       let pendingUnanswered = 0;
       let incomingPendingUnanswered = 0;
+      let hasPendingIncomingFriendRequest = false;
+      let hasPendingOutgoingFriendRequest = false;
 
       if (chat.type === 'private' && chat.participants?.length) {
         const other = chat.participants.find(p => parseInt(p.id || p._id) !== parseInt(req.user.id));
@@ -29,6 +31,44 @@ exports.getChats = async (req, res) => {
           if (!isFriend) {
             pendingUnanswered = await Message.countPendingUnanswered(chat.id, req.user.id, otherId);
             incomingPendingUnanswered = await Message.countPendingUnanswered(chat.id, otherId, req.user.id);
+            try {
+              const frCheck = await pool.query(
+                `SELECT sender_id, receiver_id, status FROM friend_requests
+                 WHERE ((sender_id = $1 AND receiver_id = $2) OR (sender_id = $2 AND receiver_id = $1))
+                   AND status = 'pending'
+                 LIMIT 1`,
+                [req.user.id, otherId]
+              );
+              if (frCheck.rows.length > 0) {
+                if (frCheck.rows[0].sender_id === otherId) {
+                  hasPendingIncomingFriendRequest = true;
+                } else {
+                  hasPendingOutgoingFriendRequest = true;
+                }
+              }
+            } catch (e) {}
+
+            if (!chat.lastMessage) {
+              if (hasPendingIncomingFriendRequest) {
+                chat.lastMessage = {
+                  id: 'fr_' + chat.id,
+                  _id: 'fr_' + chat.id,
+                  content: 'Sent you a friend request',
+                  type: 'text',
+                  senderId: otherId,
+                  createdAt: chat.updated_at
+                };
+              } else if (hasPendingOutgoingFriendRequest) {
+                chat.lastMessage = {
+                  id: 'fr_' + chat.id,
+                  _id: 'fr_' + chat.id,
+                  content: 'Friend request sent',
+                  type: 'text',
+                  senderId: req.user.id,
+                  createdAt: chat.updated_at
+                };
+              }
+            }
           }
         }
       }
@@ -46,12 +86,18 @@ exports.getChats = async (req, res) => {
         isBlockedByMe,
         isFriend,
         pendingUnanswered,
-        incomingPendingUnanswered
+        incomingPendingUnanswered,
+        hasPendingIncomingFriendRequest,
+        hasPendingOutgoingFriendRequest
       };
     }));
 
-    // Filter out 1-on-1 chats that have zero messages sent or received
-    const activeChats = chats.filter(c => c.type === 'group' || !!c.lastMessage);
+    // Filter out 1-on-1 chats that have zero messages sent or received AND no pending requests
+    const activeChats = chats.filter(c => 
+      c.type === 'group' || 
+      !!c.lastMessage || 
+      (!c.isFriend && ((c.incomingPendingUnanswered || 0) > 0 || (c.pendingUnanswered || 0) > 0 || c.hasPendingIncomingFriendRequest))
+    );
     res.json({ chats: activeChats });
   } catch (error) {
     console.error('Get chats error:', error);
@@ -543,6 +589,34 @@ exports.acceptChatRequest = async (req, res) => {
       );
     }
 
+    // Merge any duplicate chats between these two participants into chatId so all pre-accept messages are unified
+    try {
+      const allChats = await pool.query(
+        `SELECT c.id FROM chats c
+         JOIN chat_participants cp1 ON c.id = cp1.chat_id AND cp1.user_id = $1
+         JOIN chat_participants cp2 ON c.id = cp2.chat_id AND cp2.user_id = $2
+         WHERE c.type = 'private'
+         ORDER BY c.id ASC`,
+        [req.user.id, otherId]
+      );
+      if (allChats.rows.length > 1) {
+        for (const row of allChats.rows) {
+          if (row.id !== chatId) {
+            await pool.query('UPDATE messages SET chat_id = $1 WHERE chat_id = $2', [chatId, row.id]);
+            await pool.query('DELETE FROM chat_participants WHERE chat_id = $1', [row.id]);
+            await pool.query('DELETE FROM chats WHERE id = $1', [row.id]);
+          }
+        }
+        await pool.query(
+          `UPDATE chats 
+           SET last_message_id = (SELECT id FROM messages WHERE chat_id = $1 AND deleted = FALSE ORDER BY created_at DESC LIMIT 1),
+               updated_at = COALESCE((SELECT MAX(created_at) FROM messages WHERE chat_id = $1), CURRENT_TIMESTAMP)
+           WHERE id = $1`,
+          [chatId]
+        );
+      }
+    } catch (e) {}
+
     // Mark messages in this chat as read
     await pool.query(
       `INSERT INTO message_reads (message_id, user_id)
@@ -580,6 +654,11 @@ exports.acceptChatRequest = async (req, res) => {
       io.to(`user:${String(otherId)}`).emit('chat:request_accepted', acceptPayload);
       io.to(`user:${req.user.id}`).emit('chat:request_accepted', acceptPayload);
       io.to(`user:${String(req.user.id)}`).emit('chat:request_accepted', acceptPayload);
+
+      io.to(`user:${otherId}`).emit('chat:new', { chat: chatJSON });
+      io.to(`user:${String(otherId)}`).emit('chat:new', { chat: chatJSON });
+      io.to(`user:${req.user.id}`).emit('chat:new', { chat: chatJSON });
+      io.to(`user:${String(req.user.id)}`).emit('chat:new', { chat: chatJSON });
 
       io.to(`user:${otherId}`).emit('friend:request_accepted', {
         user: User.toPublicJSON(uMe),

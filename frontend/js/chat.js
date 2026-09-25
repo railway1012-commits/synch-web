@@ -536,7 +536,7 @@ function renderChatList(searchQuery = '') {
     if (chat.type === 'group' || chat.isFriend) return false;
     const incCount = chat.incomingPendingUnanswered || 0;
     const mySent = chat.pendingUnanswered || 0;
-    return incCount > 0 || (mySent === 0 && (chat.unreadCount || 0) > 0);
+    return incCount > 0 || chat.hasPendingIncomingFriendRequest || (mySent === 0 && (chat.unreadCount || 0) > 0);
   }).length;
 
   if (elements.requestsPillBadge) {
@@ -555,7 +555,7 @@ function renderChatList(searchQuery = '') {
   }
 
   const filteredChats = chats.filter(chat => {
-    if (chat.type !== 'group' && !chat.lastMessage) return false;
+    if (chat.type !== 'group' && !chat.lastMessage && !chat.hasPendingIncomingFriendRequest && !chat.hasPendingOutgoingFriendRequest) return false;
     const otherParticipant = chat.participants?.find(p => String(p._id || p.id) !== String(myId));
     const isUnavailable = otherParticipant?.isDeleted || otherParticipant?.username === 'Account Unavailable' || otherParticipant?.username?.startsWith('unavailable_');
     const displayName = isUnavailable ? 'Account Unavailable' : (savedNicknames[otherParticipant?._id] || (chat.type === 'group' ? chat.name : otherParticipant?.username));
@@ -591,7 +591,7 @@ function renderChatList(searchQuery = '') {
     const isOwnMessage = !!(myId && senderId && String(senderId) === String(myId));
     const isDeleted = !!(lastMessage?.deleted || lastMessage?.deletedForEveryone || lastMessage?.type === 'DELETED');
     const previewPrefix = (isOwnMessage && !isDeleted) ? 'You: ' : '';
-    let previewText = 'No messages yet';
+    let previewText = chat.hasPendingIncomingFriendRequest ? 'Sent you a friend request' : (chat.hasPendingOutgoingFriendRequest ? 'Friend request pending' : 'No messages yet');
     if (lastMessage) {
       if (isDeleted) {
         previewText = 'This message was deleted';
@@ -610,7 +610,11 @@ function renderChatList(searchQuery = '') {
     const preview = previewPrefix + previewText;
     const unreadCount = chat.unreadCount || 0;
     const isChatRequest = !chat.isFriend && chat.type !== 'group';
-    const isIncomingRequest = isChatRequest && ((chat.incomingPendingUnanswered || 0) > 0 || (!isOwnMessage && (chat.pendingUnanswered || 0) === 0));
+    const isIncomingRequest = isChatRequest && (
+      (chat.incomingPendingUnanswered || 0) > 0 ||
+      chat.hasPendingIncomingFriendRequest ||
+      (!isOwnMessage && (chat.pendingUnanswered || 0) === 0 && chat.lastMessage)
+    );
 
     return `
       <div class="chat-item ${currentChat?._id === chat._id ? 'active' : ''}" data-chat-id="${chat._id}" role="button">
@@ -621,7 +625,7 @@ function renderChatList(searchQuery = '') {
         <div class="chat-item-content">
           <div class="chat-item-header">
             <span class="chat-item-name">${escapeHtml(name)} ${!isUnavailable ? renderUserBadge(otherParticipant?.badge) : ''} ${isChatRequest ? '<span class="chat-request-tag">Request</span>' : ''}</span>
-            <span class="chat-time">${lastMessage ? formatTime(lastMessage.createdAt) : ''}</span>
+            <span class="chat-time">${lastMessage && lastMessage.createdAt ? formatTime(lastMessage.createdAt) : ''}</span>
           </div>
           <div class="chat-preview">${escapeHtml(preview.substring(0, 40))}</div>
           ${isIncomingRequest ? `
@@ -637,7 +641,11 @@ function renderChatList(searchQuery = '') {
   };
 
   if (chatFilter === 'all' && !searchQuery) {
-    const requestChats = filteredChats.filter(c => !c.isFriend && c.type !== 'group' && ((c.incomingPendingUnanswered || 0) > 0 || ((c.pendingUnanswered || 0) === 0 && (c.unreadCount || 0) > 0)));
+    const requestChats = filteredChats.filter(c => !c.isFriend && c.type !== 'group' && (
+      (c.incomingPendingUnanswered || 0) > 0 ||
+      c.hasPendingIncomingFriendRequest ||
+      ((c.pendingUnanswered || 0) === 0 && (c.unreadCount || 0) > 0)
+    ));
     const regularChats = filteredChats.filter(c => !requestChats.includes(c));
     if (requestChats.length > 0) {
       let html = `
@@ -3927,6 +3935,11 @@ function onNewMessage(message) {
         markChatAsRead(activeChatId);
       }
       currentChat.pendingUnanswered = 0;
+      if (!currentChat.isFriend) {
+        currentChat.incomingPendingUnanswered = (currentChat.incomingPendingUnanswered || 0) + 1;
+      }
+    } else if (!currentChat.isFriend) {
+      currentChat.pendingUnanswered = (currentChat.pendingUnanswered || 0) + 1;
     }
     updateChatRestrictions(currentChat);
   }
@@ -3940,6 +3953,14 @@ function onNewMessage(message) {
     } else if (!isSender) {
       targetChat.unreadCount = (targetChat.unreadCount || 0) + 1;
     }
+    if (!targetChat.isFriend) {
+      if (isSender) {
+        targetChat.pendingUnanswered = (targetChat.pendingUnanswered || 0) + 1;
+      } else {
+        targetChat.pendingUnanswered = 0;
+        targetChat.incomingPendingUnanswered = (targetChat.incomingPendingUnanswered || 0) + 1;
+      }
+    }
     const cIdx = chats.indexOf(targetChat);
     if (cIdx > 0) {
       chats.splice(cIdx, 1);
@@ -3951,6 +3972,25 @@ function onNewMessage(message) {
     // New chat created (e.g. message request from someone new)
     if (msgChatIdStr) {
       joinChat(msgChatIdStr);
+      fetchAPI(`/api/chats/${msgChatIdStr}`).then(res => {
+        if (res && res.chat) {
+          const freshChat = res.chat;
+          freshChat.lastMessage = message;
+          if (!freshChat.isFriend) {
+            if (isSender) {
+              freshChat.pendingUnanswered = (freshChat.pendingUnanswered || 0) + 1;
+            } else {
+              freshChat.incomingPendingUnanswered = (freshChat.incomingPendingUnanswered || 0) + 1;
+              freshChat.pendingUnanswered = 0;
+            }
+          }
+          if (!chats.some(c => String(c._id || c.id) === String(freshChat._id || freshChat.id))) {
+            chats.unshift(freshChat);
+            renderChatList(elements.searchChats ? elements.searchChats.value : '');
+            updateRailUnreadBadge();
+          }
+        }
+      }).catch(() => {});
     }
     loadChats();
   }
@@ -4034,13 +4074,24 @@ function onFriendRemoved(data) {
 function onChatRequestAccepted(data) {
   const chatId = String(data?.chatId);
   messageCache.delete(chatId);
+  const target = chats.find(c => String(c._id || c.id) === chatId);
+  if (target) {
+    target.isFriend = true;
+    target.pendingUnanswered = 0;
+    target.incomingPendingUnanswered = 0;
+    target.hasPendingIncomingFriendRequest = false;
+    target.hasPendingOutgoingFriendRequest = false;
+  }
   if (currentChat && String(currentChat._id || currentChat.id) === chatId) {
     currentChat.isFriend = true;
     currentChat.pendingUnanswered = 0;
     currentChat.incomingPendingUnanswered = 0;
+    currentChat.hasPendingIncomingFriendRequest = false;
+    currentChat.hasPendingOutgoingFriendRequest = false;
     updateChatRestrictions(currentChat);
     loadMessages();
   }
+  renderChatList(elements.searchChats ? elements.searchChats.value : '');
   loadChats();
   updateFriendBadges();
 }
@@ -4859,6 +4910,7 @@ function refreshProfileModal(targetUserId) {
 function onFriendRequestReceived(data) {
   updateFriendBadges();
   refreshConnectModal();
+  loadChats();
 
   const req = data.request;
   const sender = req?.user || data.sender;
@@ -4912,6 +4964,30 @@ function onFriendRequestAccepted(data) {
     setTimeout(() => processedFriendAcceptKeys.delete(reqKey), 8000);
   }
 
+  const friendId = String(data.user?._id || data.user?.id);
+  const target = chats.find(c => c.participants?.some(p => String(p._id || p.id) === friendId));
+  if (target) {
+    target.isFriend = true;
+    target.pendingUnanswered = 0;
+    target.incomingPendingUnanswered = 0;
+    target.hasPendingIncomingFriendRequest = false;
+    target.hasPendingOutgoingFriendRequest = false;
+  }
+  if (currentChat) {
+    const isThisChat = currentChat.participants?.some(p => String(p._id || p.id) === friendId) || 
+                       (data.chat && String(currentChat._id || currentChat.id) === String(data.chat._id || data.chat.id));
+    if (isThisChat) {
+      currentChat.isFriend = true;
+      currentChat.pendingUnanswered = 0;
+      currentChat.incomingPendingUnanswered = 0;
+      currentChat.hasPendingIncomingFriendRequest = false;
+      currentChat.hasPendingOutgoingFriendRequest = false;
+      updateChatRestrictions(currentChat);
+      loadMessages();
+    }
+  }
+
+  renderChatList(elements.searchChats ? elements.searchChats.value : '');
   updateFriendBadges();
   showToast(`@${data.user?.username || 'User'} accepted your friend request!`, 'success');
   loadChats();
@@ -4925,12 +5001,14 @@ function onFriendRequestAccepted(data) {
 function onFriendRequestDeclined(data) {
   updateFriendBadges();
   refreshConnectModal();
+  loadChats();
   refreshProfileModal(data.receiverId || data.user?._id);
 }
 
 function onFriendRequestCancelled(data) {
   updateFriendBadges();
   refreshConnectModal();
+  loadChats();
   refreshProfileModal(data.senderId || data.user?._id);
 }
 

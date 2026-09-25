@@ -900,31 +900,54 @@ const Chat = {
   },
 
   findPrivateChat: async (user1Id, user2Id) => {
+    const u1 = parseInt(user1Id);
+    const u2 = parseInt(user2Id);
+    if (!u1 || !u2 || isNaN(u1) || isNaN(u2)) return null;
+
     const result = await pool.query(
-      `SELECT c.* FROM chats c
+      `SELECT c.*,
+              (SELECT COUNT(*) FROM messages m WHERE m.chat_id = c.id AND m.deleted = FALSE)::int as msg_count,
+              (SELECT MAX(created_at) FROM messages m WHERE m.chat_id = c.id AND m.deleted = FALSE) as latest_msg_time
+       FROM chats c
        JOIN chat_participants cp1 ON c.id = cp1.chat_id AND cp1.user_id = $1
        JOIN chat_participants cp2 ON c.id = cp2.chat_id AND cp2.user_id = $2
        WHERE c.type = 'private'
-       ORDER BY c.updated_at DESC, c.id ASC`,
-      [user1Id, user2Id]
+       ORDER BY (SELECT COUNT(*) FROM messages m WHERE m.chat_id = c.id AND m.deleted = FALSE) > 0 DESC,
+                (SELECT MAX(created_at) FROM messages m WHERE m.chat_id = c.id AND m.deleted = FALSE) DESC NULLS LAST,
+                c.updated_at DESC, c.id ASC`,
+      [u1, u2]
     );
     if (result.rows.length === 0) return null;
-    const chat = result.rows[0];
+    const primaryChat = result.rows[0];
+
+    // If duplicate chats exist between these two users, merge them into primaryChat
     if (result.rows.length > 1) {
       for (let i = 1; i < result.rows.length; i++) {
         const dupId = result.rows[i].id;
         try {
-          await pool.query('UPDATE messages SET chat_id = $1 WHERE chat_id = $2', [chat.id, dupId]);
+          await pool.query('UPDATE messages SET chat_id = $1 WHERE chat_id = $2', [primaryChat.id, dupId]);
           await pool.query('DELETE FROM chat_participants WHERE chat_id = $1', [dupId]);
           await pool.query('DELETE FROM chats WHERE id = $1', [dupId]);
         } catch (e) {}
       }
+      try {
+        await pool.query(
+          `UPDATE chats 
+           SET last_message_id = (SELECT id FROM messages WHERE chat_id = $1 AND deleted = FALSE ORDER BY created_at DESC LIMIT 1),
+               updated_at = COALESCE((SELECT MAX(created_at) FROM messages WHERE chat_id = $1), CURRENT_TIMESTAMP)
+           WHERE id = $1`,
+          [primaryChat.id]
+        );
+      } catch (e) {}
     }
-    chat.participants = await Chat.getParticipants(chat.id);
-    return chat;
+    primaryChat.participants = await Chat.getParticipants(primaryChat.id);
+    return primaryChat;
   },
 
   findByUserId: async (userId) => {
+    const uIdNum = parseInt(userId);
+    if (!uIdNum || isNaN(uIdNum)) return [];
+
     const result = await pool.query(
       `SELECT c.*, 
               lm.id as last_message_id_real,
@@ -961,11 +984,11 @@ const Chat = {
          LIMIT 1
        ) lm ON TRUE
        WHERE cp.user_id = $1
-       ORDER BY c.updated_at DESC`,
-      [userId]
+       ORDER BY (lm.id IS NOT NULL) DESC, COALESCE(lm.created_at, c.updated_at) DESC, c.id ASC`,
+      [uIdNum]
     );
     const chats = [];
-    const seenPrivatePeers = new Set();
+    const seenPrivatePeers = new Map();
     for (const chat of result.rows) {
       chat.participants = await Chat.getParticipants(chat.id);
       chat.unreadCount = parseInt(chat.unread_count) || 0;
@@ -980,13 +1003,24 @@ const Chat = {
         };
       }
       if (chat.type === 'private' && chat.participants?.length) {
-        const other = chat.participants.find(p => parseInt(p._id || p.id) !== parseInt(userId));
+        const other = chat.participants.find(p => parseInt(p._id || p.id) !== uIdNum);
         if (other) {
           const otherId = parseInt(other._id || other.id);
           if (seenPrivatePeers.has(otherId)) {
-            continue; // Deduplicate: keep only the latest private chat with this peer
+            const existingIdx = seenPrivatePeers.get(otherId);
+            const existingChat = chats[existingIdx];
+            if (!existingChat.lastMessage && chat.lastMessage) {
+              chats[existingIdx] = chat;
+            }
+            const winner = chats[existingIdx];
+            const loserId = (winner.id === chat.id) ? existingChat.id : chat.id;
+            pool.query('UPDATE messages SET chat_id = $1 WHERE chat_id = $2', [winner.id, loserId])
+              .then(() => pool.query('DELETE FROM chat_participants WHERE chat_id = $1', [loserId]))
+              .then(() => pool.query('DELETE FROM chats WHERE id = $1', [loserId]))
+              .catch(() => {});
+            continue;
           }
-          seenPrivatePeers.add(otherId);
+          seenPrivatePeers.set(otherId, chats.length);
         }
       }
       chats.push(chat);

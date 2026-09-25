@@ -254,8 +254,51 @@ exports.sendFriendRequest = async (req, res) => {
 
     const request = await FriendRequest.send(req.user.id, targetUserId);
 
+    let chat = await Chat.findPrivateChat(req.user.id, targetUserId);
+    if (!chat) {
+      chat = await Chat.create('private', null, null);
+      await Chat.addParticipant(chat.id, req.user.id);
+      await Chat.addParticipant(chat.id, targetUserId);
+      chat = await Chat.findById(chat.id);
+    }
+
+    const chatJSON = chat ? {
+      _id: chat.id,
+      id: chat.id,
+      type: chat.type,
+      name: chat.name,
+      participants: chat.participants,
+      updatedAt: chat.updated_at,
+      isFriend: false,
+      isBlocked: false,
+      isBlockedByMe: false,
+      pendingUnanswered: 0,
+      incomingPendingUnanswered: 0,
+      hasPendingIncomingFriendRequest: true,
+      lastMessage: {
+        id: 'fr_' + chat.id,
+        _id: 'fr_' + chat.id,
+        content: 'Sent you a friend request',
+        type: 'text',
+        senderId: req.user.id,
+        createdAt: request.created_at
+      }
+    } : null;
+
     if (io) {
       io.to(`user:${targetUserId}`).emit('friend:request_received', {
+        request: {
+          _id: request.id,
+          id: request.id,
+          senderId: req.user.id,
+          receiverId: targetUserId,
+          status: request.status,
+          createdAt: request.created_at,
+          user: User.toPublicJSON(req.user),
+          sender: User.toPublicJSON(req.user)
+        }
+      });
+      io.to(`user:${String(targetUserId)}`).emit('friend:request_received', {
         request: {
           _id: request.id,
           id: request.id,
@@ -279,9 +322,28 @@ exports.sendFriendRequest = async (req, res) => {
           receiver: User.toPublicJSON(targetUser)
         }
       });
+      io.to(`user:${String(req.user.id)}`).emit('friend:request_sent', {
+        request: {
+          _id: request.id,
+          id: request.id,
+          senderId: req.user.id,
+          receiverId: targetUserId,
+          status: request.status,
+          createdAt: request.created_at,
+          user: User.toPublicJSON(targetUser),
+          receiver: User.toPublicJSON(targetUser)
+        }
+      });
+
+      if (chatJSON) {
+        io.to(`user:${targetUserId}`).emit('chat:new', { chat: chatJSON });
+        io.to(`user:${String(targetUserId)}`).emit('chat:new', { chat: chatJSON });
+        io.to(`user:${req.user.id}`).emit('chat:new', { chat: chatJSON });
+        io.to(`user:${String(req.user.id)}`).emit('chat:new', { chat: chatJSON });
+      }
     }
 
-    res.status(201).json({ request, message: 'Friend request sent' });
+    res.status(201).json({ request, chat: chatJSON, message: 'Friend request sent' });
   } catch (error) {
     console.error('Send friend request error:', error);
     res.status(500).json({ error: 'Error sending friend request' });
