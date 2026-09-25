@@ -1012,12 +1012,6 @@ const Chat = {
             if (!existingChat.lastMessage && chat.lastMessage) {
               chats[existingIdx] = chat;
             }
-            const winner = chats[existingIdx];
-            const loserId = (winner.id === chat.id) ? existingChat.id : chat.id;
-            pool.query('UPDATE messages SET chat_id = $1 WHERE chat_id = $2', [winner.id, loserId])
-              .then(() => pool.query('DELETE FROM chat_participants WHERE chat_id = $1', [loserId]))
-              .then(() => pool.query('DELETE FROM chats WHERE id = $1', [loserId]))
-              .catch(() => {});
             continue;
           }
           seenPrivatePeers.set(otherId, chats.length);

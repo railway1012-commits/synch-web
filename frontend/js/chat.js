@@ -102,11 +102,12 @@ function startLiveChatSync() {
     if (!currentChat || document.hidden || (typeof document.visibilityState !== 'undefined' && document.visibilityState !== 'visible')) {
       return;
     }
-    const targetChatId = currentChat._id;
+    const targetChatId = currentChat._id || currentChat.id;
+    if (!targetChatId) return;
     try {
       const data = await fetchAPI(`/api/chats/${targetChatId}/messages`);
       const freshMessages = data.messages || [];
-      if (currentChat && String(currentChat._id) === String(targetChatId)) {
+      if (currentChat && String(currentChat._id || currentChat.id) === String(targetChatId)) {
         if (areMessagesDifferent(messages, freshMessages)) {
           messages = freshMessages;
           renderMessages();
@@ -475,17 +476,25 @@ async function loadChats() {
   }
   try {
     const data = await fetchAPI('/api/chats');
-    chats = data.chats || [];
-    if (currentChat && currentChat._id) {
-      const active = chats.find(c => String(c._id || c.id) === String(currentChat._id));
+    chats = (data.chats || []).map(c => {
+      if (c && !c._id && c.id) c._id = c.id;
+      if (c && !c.id && c._id) c.id = c._id;
+      return c;
+    });
+    if (currentChat && (currentChat._id || currentChat.id)) {
+      const activeId = String(currentChat._id || currentChat.id);
+      const active = chats.find(c => String(c._id || c.id) === activeId);
       if (active) {
         active.unreadCount = 0;
+      } else {
+        chats.unshift(currentChat);
       }
     }
     localStorage.setItem('synch_chats_cache', JSON.stringify(chats));
     renderChatList(elements.searchChats ? elements.searchChats.value : '');
-    if (currentChat && currentChat._id) {
-      const updated = chats.find(c => String(c._id || c.id) === String(currentChat._id));
+    if (currentChat && (currentChat._id || currentChat.id)) {
+      const activeId = String(currentChat._id || currentChat.id);
+      const updated = chats.find(c => String(c._id || c.id) === activeId);
       if (updated) {
         Object.assign(currentChat, updated);
         currentChat.unreadCount = 0;
@@ -555,10 +564,12 @@ function renderChatList(searchQuery = '') {
   }
 
   const filteredChats = chats.filter(chat => {
-    if (chat.type !== 'group' && !chat.lastMessage && !chat.hasPendingIncomingFriendRequest && !chat.hasPendingOutgoingFriendRequest) return false;
+    const isCurrent = currentChat && String(currentChat._id || currentChat.id) === String(chat._id || chat.id);
+    if (chat.type !== 'group' && !chat.lastMessage && !chat.hasPendingIncomingFriendRequest && !chat.hasPendingOutgoingFriendRequest && !chat.isFriend && !isCurrent) return false;
     const otherParticipant = chat.participants?.find(p => String(p._id || p.id) !== String(myId));
     const isUnavailable = otherParticipant?.isDeleted || otherParticipant?.username === 'Account Unavailable' || otherParticipant?.username?.startsWith('unavailable_');
-    const displayName = isUnavailable ? 'Account Unavailable' : (savedNicknames[otherParticipant?._id] || (chat.type === 'group' ? chat.name : otherParticipant?.username));
+    const pId = otherParticipant?._id || otherParticipant?.id;
+    const displayName = isUnavailable ? 'Account Unavailable' : (savedNicknames[pId] || (chat.type === 'group' ? chat.name : otherParticipant?.username));
     const matchesSearch = !searchQuery || displayName?.toLowerCase().includes(searchQuery.toLowerCase());
 
     const isRequest = !chat.isFriend && chat.type !== 'group';
@@ -582,7 +593,8 @@ function renderChatList(searchQuery = '') {
   const renderSingleChatItem = (chat) => {
     const otherParticipant = chat.participants?.find(p => String(p._id || p.id) !== String(myId));
     const isUnavailable = otherParticipant?.isDeleted || otherParticipant?.username === 'Account Unavailable' || otherParticipant?.username?.startsWith('unavailable_');
-    const nickname = isUnavailable ? null : savedNicknames[otherParticipant?._id];
+    const pId = otherParticipant?._id || otherParticipant?.id;
+    const nickname = isUnavailable ? null : savedNicknames[pId];
     const name = isUnavailable ? 'Account Unavailable' : (nickname || (chat.type === 'group' ? chat.name : otherParticipant?.username || 'User'));
     const avatar = isUnavailable ? null : (chat.type === 'group' ? chat.avatar : otherParticipant?.avatar);
     const status = isUnavailable ? 'offline' : (otherParticipant?.status || 'offline');
@@ -615,9 +627,11 @@ function renderChatList(searchQuery = '') {
       chat.hasPendingIncomingFriendRequest ||
       (!isOwnMessage && (chat.pendingUnanswered || 0) === 0 && chat.lastMessage)
     );
+    const chatIdAttr = chat._id || chat.id;
+    const isCurrentActive = currentChat && String(currentChat._id || currentChat.id) === String(chatIdAttr);
 
     return `
-      <div class="chat-item ${currentChat?._id === chat._id ? 'active' : ''}" data-chat-id="${chat._id}" role="button">
+      <div class="chat-item ${isCurrentActive ? 'active' : ''}" data-chat-id="${chatIdAttr}" role="button">
         <div class="chat-item-avatar">
           <div class="avatar" style="${isUnavailable ? 'background: var(--bg-tertiary); color: var(--text-muted);' : ''}">${avatar ? `<img src="${sanitizeUrl(avatar)}" alt="${escapeAttr(name)}" loading="lazy" onerror="this.parentElement.textContent='${escapeAttr(isUnavailable ? '?' : getInitials(name))}'">` : (isUnavailable ? '?' : getInitials(name))}</div>
           <div class="status-dot ${status}"></div>
@@ -630,8 +644,8 @@ function renderChatList(searchQuery = '') {
           <div class="chat-preview">${escapeHtml(preview.substring(0, 40))}</div>
           ${isIncomingRequest ? `
             <div class="chat-item-actions" onclick="event.stopPropagation()">
-              <button type="button" class="chat-action-btn accept-btn" onclick="event.stopPropagation(); window.acceptMessageRequestFromList('${chat._id}')">Accept</button>
-              <button type="button" class="chat-action-btn decline-btn" onclick="event.stopPropagation(); window.declineMessageRequestFromList('${chat._id}')">Decline</button>
+              <button type="button" class="chat-action-btn accept-btn" onclick="event.stopPropagation(); window.acceptMessageRequestFromList('${chatIdAttr}')">Accept</button>
+              <button type="button" class="chat-action-btn decline-btn" onclick="event.stopPropagation(); window.declineMessageRequestFromList('${chatIdAttr}')">Decline</button>
             </div>
           ` : ''}
         </div>
@@ -786,16 +800,23 @@ function updateChatRestrictions(chat) {
 }
 
 window.acceptMessageRequest = async function(chat) {
-  if (!chat || !chat._id) return;
-  const cId = String(chat._id);
+  if (!chat || (!chat._id && !chat.id)) return;
+  const cId = String(chat._id || chat.id);
   try {
     const res = await fetchAPI(`/api/chats/${cId}/accept-request`, { method: 'POST' });
     showToast('Message request accepted!', 'success');
-    chat.isFriend = true;
-    chat.pendingUnanswered = 0;
-    chat.incomingPendingUnanswered = 0;
-    updateChatRestrictions(chat);
+    const authChat = res?.chat || chat;
+    if (authChat && !authChat._id && authChat.id) authChat._id = authChat.id;
+    if (authChat && !authChat.id && authChat._id) authChat.id = authChat._id;
+    authChat.isFriend = true;
+    authChat.pendingUnanswered = 0;
+    authChat.incomingPendingUnanswered = 0;
+    Object.assign(chat, authChat);
+    if (currentChat) Object.assign(currentChat, authChat);
+    const finalChatId = String(authChat._id || authChat.id || cId);
     messageCache.delete(cId);
+    messageCache.delete(finalChatId);
+    updateChatRestrictions(currentChat || chat);
     await loadChats();
     updateFriendBadges();
     await loadMessages();
@@ -810,16 +831,22 @@ window.acceptMessageRequestFromList = async function(chatId) {
   try {
     const res = await fetchAPI(`/api/chats/${cId}/accept-request`, { method: 'POST' });
     showToast('Message request accepted!', 'success');
-    const targetChat = chats.find(c => String(c._id || c.id) === cId);
+    const authChat = res?.chat;
+    if (authChat && !authChat._id && authChat.id) authChat._id = authChat.id;
+    if (authChat && !authChat.id && authChat._id) authChat.id = authChat._id;
+    const finalChatId = String(authChat?._id || authChat?.id || cId);
+    const targetChat = chats.find(c => String(c._id || c.id) === cId || String(c._id || c.id) === finalChatId);
     if (targetChat) {
+      if (authChat) Object.assign(targetChat, authChat);
       targetChat.isFriend = true;
       targetChat.pendingUnanswered = 0;
       targetChat.incomingPendingUnanswered = 0;
     }
     messageCache.delete(cId);
+    messageCache.delete(finalChatId);
     await loadChats();
     updateFriendBadges();
-    await selectChat(cId);
+    await selectChat(finalChatId);
   } catch (err) {
     showToast(getFriendlyError(err.message), 'error');
   }
@@ -985,9 +1012,11 @@ async function selectChat(chatId) {
     } catch (e) {}
   }
   if (!chat) return;
-  if (currentChat) leaveChat(currentChat._id);
+  if (!chat._id && chat.id) chat._id = chat.id;
+  if (!chat.id && chat._id) chat.id = chat._id;
+  if (currentChat) leaveChat(currentChat._id || currentChat.id);
   currentChat = chat;
-  joinChat(chatId);
+  joinChat(chat._id || chat.id || chatId);
   const savedNicknames = JSON.parse(localStorage.getItem('synch_nicknames') || '{}');
   const myId = currentUser ? (currentUser._id || currentUser.id) : null;
   const otherParticipant = chat.participants?.find(p => {
@@ -1042,7 +1071,8 @@ async function selectChat(chatId) {
 
 async function loadMessages() {
   if (!currentChat) return;
-  const targetChatId = currentChat._id;
+  const targetChatId = currentChat._id || currentChat.id;
+  if (!targetChatId) return;
   const chatKey = String(targetChatId);
 
   // Check if messages for this chat are cached
@@ -1078,7 +1108,7 @@ async function loadMessages() {
     persistMessageCache();
 
     // Reconcile DOM if user is still viewing this chat
-    if (currentChat && String(currentChat._id) === chatKey) {
+    if (currentChat && String(currentChat._id || currentChat.id) === chatKey) {
       if (!hasCache || areMessagesDifferent(messages, freshMessages)) {
         messages = freshMessages;
         renderMessages();
@@ -1098,7 +1128,7 @@ async function loadMessages() {
   } catch (error) {
     if (!hasCache) {
       showToast(getFriendlyError(error.message), 'error');
-      if (currentChat && String(currentChat._id) === chatKey) {
+      if (currentChat && String(currentChat._id || currentChat.id) === chatKey) {
         elements.messagesContainer.innerHTML = `<div class="empty-state"><p>${getFriendlyError(error.message)}</p></div>`;
       }
     }
@@ -3893,9 +3923,11 @@ function onNewChat(data) {
 const processedMessageIds = new Set();
 
 function onNewMessage(message) {
-  if (!message || !message._id) return;
+  if (!message || (!message._id && !message.id)) return;
+  if (!message._id && message.id) message._id = message.id;
+  if (!message.id && message._id) message.id = message._id;
 
-  const msgIdStr = String(message._id);
+  const msgIdStr = String(message._id || message.id);
   // Deduplicate: ignore if this message ID was already handled
   if (processedMessageIds.has(msgIdStr)) {
     return;
@@ -3906,8 +3938,8 @@ function onNewMessage(message) {
     processedMessageIds.delete(oldest);
   }
 
-  const currentChatIdStr = currentChat ? String(currentChat._id) : null;
-  const msgChatIdStr = message.chat ? String(message.chat) : null;
+  const currentChatIdStr = currentChat ? String(currentChat._id || currentChat.id) : null;
+  const msgChatIdStr = message.chat ? (typeof message.chat === 'object' ? String(message.chat._id || message.chat.id) : String(message.chat)) : (message.chatId ? String(message.chatId) : (message.chat_id ? String(message.chat_id) : null));
   const isCurrentChat = !!(currentChatIdStr && msgChatIdStr && currentChatIdStr === msgChatIdStr);
 
   const myIdStr = currentUser ? String(currentUser._id || currentUser.id || '') : '';

@@ -92,10 +92,11 @@ exports.getChats = async (req, res) => {
       };
     }));
 
-    // Filter out 1-on-1 chats that have zero messages sent or received AND no pending requests
+    // Filter out 1-on-1 chats that have zero messages sent or received AND no pending requests AND are not friends
     const activeChats = chats.filter(c => 
       c.type === 'group' || 
       !!c.lastMessage || 
+      c.isFriend ||
       (!c.isFriend && ((c.incomingPendingUnanswered || 0) > 0 || (c.pendingUnanswered || 0) > 0 || c.hasPendingIncomingFriendRequest))
     );
     res.json({ chats: activeChats });
@@ -593,9 +594,11 @@ exports.acceptChatRequest = async (req, res) => {
     try {
       const allChats = await pool.query(
         `SELECT c.id FROM chats c
-         JOIN chat_participants cp1 ON c.id = cp1.chat_id AND cp1.user_id = $1
-         JOIN chat_participants cp2 ON c.id = cp2.chat_id AND cp2.user_id = $2
+         JOIN chat_participants cp ON c.id = cp.chat_id
          WHERE c.type = 'private'
+           AND cp.user_id IN ($1, $2)
+         GROUP BY c.id
+         HAVING COUNT(DISTINCT cp.user_id) = 2
          ORDER BY c.id ASC`,
         [req.user.id, otherId]
       );
@@ -603,19 +606,22 @@ exports.acceptChatRequest = async (req, res) => {
         for (const row of allChats.rows) {
           if (row.id !== chatId) {
             await pool.query('UPDATE messages SET chat_id = $1 WHERE chat_id = $2', [chatId, row.id]);
+            await pool.query('UPDATE chats SET last_message_id = NULL WHERE id = $1', [row.id]);
             await pool.query('DELETE FROM chat_participants WHERE chat_id = $1', [row.id]);
             await pool.query('DELETE FROM chats WHERE id = $1', [row.id]);
           }
         }
-        await pool.query(
-          `UPDATE chats 
-           SET last_message_id = (SELECT id FROM messages WHERE chat_id = $1 AND deleted = FALSE ORDER BY created_at DESC LIMIT 1),
-               updated_at = COALESCE((SELECT MAX(created_at) FROM messages WHERE chat_id = $1), CURRENT_TIMESTAMP)
-           WHERE id = $1`,
-          [chatId]
-        );
       }
-    } catch (e) {}
+      await pool.query(
+        `UPDATE chats 
+         SET last_message_id = (SELECT id FROM messages WHERE chat_id = $1 AND deleted = FALSE ORDER BY created_at DESC LIMIT 1),
+             updated_at = COALESCE((SELECT MAX(created_at) FROM messages WHERE chat_id = $1), CURRENT_TIMESTAMP)
+         WHERE id = $1`,
+        [chatId]
+      );
+    } catch (e) {
+      console.error('Error merging duplicate chats on accept:', e);
+    }
 
     // Mark messages in this chat as read
     await pool.query(
