@@ -130,22 +130,8 @@ module.exports = (io) => {
         if (otherParticipantId) {
           const isFriend = await FriendRequest.isFriend(user.id, otherParticipantId);
           if (!isFriend) {
-            const mType = type || 'text';
-            if (mType !== 'text' && mType !== 'voice') {
-              socket.emit('error', { message: 'Only text and voice messages are allowed until friend request is accepted' });
-              if (typeof callback === 'function') callback({ error: 'Only text and voice messages allowed' });
-              return;
-            }
-
-            const pendingCount = await Message.countPendingUnanswered(chat.id, user.id, otherParticipantId);
-            if (pendingCount >= 1) {
-              socket.emit('error', {
-                message: 'Message request pending. You can only send 1 message until the recipient replies or accepts your friend request.'
-              });
-              if (typeof callback === 'function') callback({ error: 'Message request pending' });
-              return;
-            }
-
+            // Messaging non-friends is unrestricted; replying to a non-friend still
+            // auto-accepts the pending friend request below.
             const incomingFromOther = await Message.countPendingUnanswered(chat.id, otherParticipantId, user.id);
             if (incomingFromOther >= 1) {
               const { pool } = require('../database');

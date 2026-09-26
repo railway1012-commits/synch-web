@@ -715,9 +715,6 @@ function updateChatRestrictions(chat) {
   const pendingUnanswered = chat.pendingUnanswered || 0;
   const incomingPendingUnanswered = chat.incomingPendingUnanswered || 0;
 
-  // Outgoing waiting: I sent >= 1 message to non-friend and they haven't replied
-  const isMessageRequestWaiting = (!isFriend && chat.type !== 'group' && !isBlocked && (pendingUnanswered >= 1 || (mySentCount >= 1 && otherReplyCount === 0)));
-
   // Incoming request: Non-friend sent >= 1 message to me and I haven't replied/accepted
   const isIncomingMessageRequest = (!isFriend && chat.type !== 'group' && !isBlocked && (incomingPendingUnanswered >= 1 || (otherReplyCount >= 1 && mySentCount === 0)));
 
@@ -752,7 +749,7 @@ function updateChatRestrictions(chat) {
       }
     }
   } else if (isIncomingMessageRequest) {
-    if (inputWrapper) inputWrapper.style.display = 'none';
+    if (inputWrapper) inputWrapper.style.display = 'flex';
     if (blockedBanner) blockedBanner.style.display = 'none';
     if (waitingBanner) waitingBanner.style.display = 'none';
     if (introBanner) introBanner.style.display = 'none';
@@ -769,12 +766,6 @@ function updateChatRestrictions(chat) {
       if (acceptBtn) acceptBtn.onclick = () => window.acceptMessageRequest(chat);
       if (declineBtn) declineBtn.onclick = () => window.declineMessageRequest(chat);
     }
-  } else if (isMessageRequestWaiting) {
-    if (inputWrapper) inputWrapper.style.display = 'none';
-    if (blockedBanner) blockedBanner.style.display = 'none';
-    if (incomingBanner) incomingBanner.style.display = 'none';
-    if (introBanner) introBanner.style.display = 'none';
-    if (waitingBanner) waitingBanner.style.display = 'block';
   } else {
     if (blockedBanner) blockedBanner.style.display = 'none';
     if (waitingBanner) waitingBanner.style.display = 'none';
@@ -1299,36 +1290,11 @@ function handleSendMessage() {
   const content = elements.messageInput.value.trim();
   if (!content || !currentChat) return;
 
-  const isFriend = currentChat.type === 'group' ? true : (currentChat.isFriend === true);
-  if (!isFriend && currentChat.type !== 'group') {
-    let mySentCount = 0;
-    let otherReplyCount = 0;
-    const myId = currentUser ? (currentUser._id || currentUser.id) : null;
-    if (Array.isArray(messages)) {
-      for (const m of messages) {
-        if (m.deleted || m.deletedForEveryone || m.type === 'DELETED') continue;
-        const sId = String(m.sender?._id || m.sender?.id || m.senderId || m.sender_id || m.sender || '');
-        if (sId && sId === String(myId)) mySentCount++;
-        else if (sId) otherReplyCount++;
-      }
-    }
-    const pendingUnanswered = currentChat.pendingUnanswered || 0;
-    if (pendingUnanswered >= 1 || (mySentCount >= 1 && otherReplyCount === 0)) {
-      showToast('You can only send 1 message until the recipient replies or accepts your friend request.', 'warning');
-      updateChatRestrictions(currentChat);
-      return;
-    }
-  }
-
   const editingId = elements.messageInput.dataset.editing;
   if (editingId) {
     editMessage(editingId, content);
   } else {
     sendMessage({ chatId: currentChat._id || currentChat.id, content, type: 'text', replyTo: replyingTo?._id || null });
-    if (!isFriend && currentChat.type !== 'group') {
-      currentChat.pendingUnanswered = (currentChat.pendingUnanswered || 0) + 1;
-      updateChatRestrictions(currentChat);
-    }
   }
   elements.messageInput.value = '';
   elements.messageInput.style.height = 'auto';
@@ -1413,27 +1379,6 @@ function cancelRecording() { if (mediaRecorder && isRecording) { mediaRecorder.s
 async function sendVoiceMessage(blob) {
   if (!currentChat) return;
 
-  const isFriend = currentChat.type === 'group' ? true : (currentChat.isFriend === true);
-  if (!isFriend && currentChat.type !== 'group') {
-    let mySentCount = 0;
-    let otherReplyCount = 0;
-    const myId = currentUser ? (currentUser._id || currentUser.id) : null;
-    if (Array.isArray(messages)) {
-      for (const m of messages) {
-        if (m.deleted || m.deletedForEveryone || m.type === 'DELETED') continue;
-        const sId = String(m.sender?._id || m.sender?.id || m.senderId || m.sender_id || m.sender || '');
-        if (sId && sId === String(myId)) mySentCount++;
-        else if (sId) otherReplyCount++;
-      }
-    }
-    const pendingUnanswered = currentChat.pendingUnanswered || 0;
-    if (pendingUnanswered >= 1 || (mySentCount >= 1 && otherReplyCount === 0)) {
-      showToast('You can only send 1 message until the recipient replies or accepts your friend request.', 'warning');
-      updateChatRestrictions(currentChat);
-      return;
-    }
-  }
-
   const formData = new FormData();
   formData.append('media', blob, 'voice.webm');
   formData.append('chatId', currentChat._id || currentChat.id);
@@ -1444,10 +1389,6 @@ async function sendVoiceMessage(blob) {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || 'Failed to send voice');
-    }
-    if (!isFriend && currentChat.type !== 'group') {
-      currentChat.pendingUnanswered = (currentChat.pendingUnanswered || 0) + 1;
-      updateChatRestrictions(currentChat);
     }
   } catch (e) {
     showToast(getFriendlyError(e.message), 'error');

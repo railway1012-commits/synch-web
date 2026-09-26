@@ -43,24 +43,8 @@ exports.sendMessage = async (req, res) => {
     if (otherParticipantId) {
       const isFriend = await FriendRequest.isFriend(req.user.id, otherParticipantId);
       if (!isFriend) {
-        let candidateType = type || 'text';
-        if (req.file) {
-          if (req.file.mimetype.startsWith('audio/')) {
-            candidateType = 'voice';
-          } else {
-            return res.status(403).json({ error: 'Only text and voice messages can be sent until friend request is accepted' });
-          }
-        } else if (candidateType !== 'text' && candidateType !== 'voice') {
-          return res.status(403).json({ error: 'Only text and voice messages are allowed until friend request is accepted' });
-        }
-
-        const pendingCount = await Message.countPendingUnanswered(chat.id, req.user.id, otherParticipantId);
-        if (pendingCount >= 1) {
-          return res.status(403).json({
-            error: 'Message request pending. You can only send 1 message until the recipient replies or accepts your friend request.'
-          });
-        }
-
+        // Messaging non-friends is unrestricted; replying to a non-friend still
+        // auto-accepts the pending friend request below.
         const incomingFromOther = await Message.countPendingUnanswered(chat.id, otherParticipantId, req.user.id);
         if (incomingFromOther >= 1) {
           const { pool } = require('../database');
