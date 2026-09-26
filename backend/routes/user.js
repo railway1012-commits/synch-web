@@ -8,7 +8,7 @@ const upload = require('../middleware/upload');
 router.use(auth);
 
 // Broad API limiter so user endpoints can't be spammed
-const userLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 240, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests. Please slow down.' } });
+const userLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1200, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests. Please slow down.' } });
 router.use(userLimiter);
 
 router.get('/', userController.getUsers);

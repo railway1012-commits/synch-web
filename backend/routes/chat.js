@@ -7,7 +7,7 @@ const { auth } = require('../middleware/auth');
 router.use(auth);
 
 // Broad API limiter so chat endpoints can't be spammed
-const chatLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 240, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests. Please slow down.' } });
+const chatLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1200, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests. Please slow down.' } });
 router.use(chatLimiter);
 
 router.get('/ice-servers', chatController.getIceServers);

@@ -9,7 +9,7 @@ const upload = require('../middleware/upload');
 router.use(auth);
 
 // Broad API limiter so message endpoints can't be spammed
-const messageLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests. Please slow down.' } });
+const messageLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1200, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests. Please slow down.' } });
 router.use(messageLimiter);
 
 router.post('/', upload.single('media'), messageController.sendMessage);
