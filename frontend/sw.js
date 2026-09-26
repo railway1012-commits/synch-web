@@ -1,4 +1,4 @@
-const CACHE_NAME = 'synch-v24';
+const CACHE_NAME = 'synch-v25';
 // Never cache HTML routes — they must always come from the server
 // (caching them can serve stale/redirect/authenticated pages).
 const STATIC_ASSETS = [

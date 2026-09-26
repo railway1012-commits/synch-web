@@ -397,12 +397,57 @@ if (typeof socket !== 'undefined' && socket) {
 
 function sendMessage(data) {
   if (socket && socket.connected) {
-    socket.emit('message:send', data);
+    socket.timeout(6000).emit('message:send', data, async (err, resp) => {
+      if (!err && resp && resp.success) return;
+      const businessError = (!err && resp && resp.error) ? resp.error : null;
+      if (businessError) {
+        if (typeof showToast === 'function') {
+          showToast(typeof getFriendlyError === 'function' ? getFriendlyError(businessError) : businessError, 'error');
+        }
+        return;
+      }
+      // Transport failure (stale socket / timeout): deliver via REST so the message is never lost
+      await restSendMessage(data);
+    });
   } else {
     offlineQueue.push(data);
     localStorage.setItem('synch_offline_queue', JSON.stringify(offlineQueue));
     if (typeof showToast === 'function') {
       showToast('You are offline. Message queued for delivery when reconnected.', 'info');
+    }
+  }
+}
+
+async function restSendMessage(data) {
+  try {
+    const token = (typeof getToken === 'function') ? getToken() : (sessionStorage.getItem('synch_token') || localStorage.getItem('synch_token'));
+    const res = await fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token || ''}` },
+      body: JSON.stringify({
+        chatId: data.chatId,
+        content: data.content || '',
+        type: data.type || 'text',
+        replyTo: data.replyTo || null
+      })
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      const errMsg = errJson.error || errJson.message || 'Failed to send message';
+      if (typeof showToast === 'function') {
+        showToast(typeof getFriendlyError === 'function' ? getFriendlyError(errMsg) : errMsg, 'error');
+      }
+      return;
+    }
+    const payload = await res.json().catch(() => null);
+    const msg = payload && (payload.message || payload);
+    if (msg && typeof onNewMessage === 'function') {
+      onNewMessage(msg);
+    }
+  } catch (e) {
+    if (typeof showToast === 'function') {
+      const friendly = typeof getFriendlyError === 'function' ? getFriendlyError(e.message || 'Could not send message') : 'Could not send message';
+      showToast(friendly, 'error');
     }
   }
 }

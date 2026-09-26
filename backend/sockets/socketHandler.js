@@ -30,6 +30,19 @@ module.exports = (io) => {
       onlineUsers.set(userIdNum, socket.id);
       socket.join(`user:${userIdNum}`);
       socket.join(`user:${String(userIdNum)}`);
+      // Auto-join every chat room so live delivery survives reconnects and
+      // server restarts even if a client never re-emits chat:join.
+      try {
+        const chats = await Chat.findByUserId(userIdNum);
+        for (const c of chats) {
+          if (c && c.id) {
+            socket.join(`chat:${c.id}`);
+            socket.join(`chat:${String(c.id)}`);
+          }
+        }
+      } catch (e) {
+        console.error('Socket auto-join chat rooms error:', e);
+      }
     }
 
     await User.updateStatus(user.id, 'online');
@@ -385,9 +398,11 @@ module.exports = (io) => {
     });
 
     socket.on('chat:join', async (chatId) => {
-      const cId = parseInt(chatId);
-      if (cId && (await Chat.isParticipant(cId, user.id))) {
+      // Clients may send a plain id (web) or an object payload (mobile)
+      const cId = parseInt(chatId?.chatId ?? chatId);
+      if (cId && !isNaN(cId) && (await Chat.isParticipant(cId, user.id))) {
         socket.join(`chat:${cId}`);
+        socket.join(`chat:${String(cId)}`);
       }
     });
 
