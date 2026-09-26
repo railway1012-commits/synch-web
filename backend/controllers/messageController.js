@@ -1,4 +1,5 @@
 const { Message, Chat, User, FriendRequest } = require('../database');
+const upload = require('../middleware/upload');
 
 let io = null;
 
@@ -9,6 +10,10 @@ exports.setIO = (socketIO) => {
 exports.sendMessage = async (req, res) => {
   try {
     const { chatId, content, type, replyTo, mediaDuration } = req.body;
+
+    if (content && typeof content === 'string' && content.length > 5000) {
+      return res.status(400).json({ error: 'Message too long (max 5000 characters)' });
+    }
 
     const chat = await Chat.findById(parseInt(chatId));
     if (!chat || !(await Chat.isParticipant(parseInt(chatId), req.user.id))) {
@@ -97,6 +102,11 @@ exports.sendMessage = async (req, res) => {
     let mediaUrl = null;
     let messageType = type || 'text';
     if (req.file) {
+      // Magic-byte verification: content must actually match the declared type
+      if (!upload.validateUploadedFile(req.file.path, req.file.mimetype)) {
+        try { require('fs').unlinkSync(req.file.path); } catch (e) {}
+        return res.status(400).json({ error: 'File content does not match its declared type' });
+      }
       let fileType = 'docs';
       if (req.file.mimetype.startsWith('image/')) {
         fileType = 'images';
@@ -129,30 +139,24 @@ exports.sendMessage = async (req, res) => {
 
     if (io) {
       const chatIdNum = parseInt(chat.id);
-      // 1. Broadcast directly to chat room for instant live delivery
+      // Broadcast to the chat room only (all participants are joined) — avoids duplicate delivery
       io.to(`chat:${chatIdNum}`).emit('message:new', messageJSON);
-      io.to(`chat:${String(chatIdNum)}`).emit('message:new', messageJSON);
 
-      // 2. Broadcast to participant personal rooms
+      // Personal-room notifications for other participants (different event, no duplication)
       const seenPids = new Set();
       (chat.participants || []).forEach(participant => {
         const pid = parseInt(participant._id || participant.id);
-        if (!pid || isNaN(pid) || seenPids.has(pid)) return;
+        if (!pid || isNaN(pid) || seenPids.has(pid) || pid === parseInt(req.user.id)) return;
         seenPids.add(pid);
 
-        io.to(`user:${pid}`).emit('message:new', messageJSON);
-        io.to(`user:${String(pid)}`).emit('message:new', messageJSON);
-        if (pid !== parseInt(req.user.id)) {
-          const notifPayload = {
-            message: messageJSON,
-            chat: {
-              _id: chat.id,
-              participants: chat.participants
-            }
-          };
-          io.to(`user:${pid}`).emit('message:notification', notifPayload);
-          io.to(`user:${String(pid)}`).emit('message:notification', notifPayload);
-        }
+        const notifPayload = {
+          message: messageJSON,
+          chat: {
+            _id: chat.id,
+            participants: chat.participants
+          }
+        };
+        io.to(`user:${pid}`).emit('message:notification', notifPayload);
       });
     }
 
@@ -175,6 +179,14 @@ exports.editMessage = async (req, res) => {
 
     if (!message || message.sender_id !== req.user.id || message.deleted) {
       return res.status(404).json({ error: 'Message not found' });
+    }
+
+    if (!(await Chat.isParticipant(parseInt(message.chat_id), req.user.id))) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    if (typeof content !== 'string' || content.length === 0 || content.length > 5000) {
+      return res.status(400).json({ error: 'Invalid message content' });
     }
 
     const updated = await Message.update(parseInt(messageId), content);
@@ -233,6 +245,10 @@ exports.deleteForMe = async (req, res) => {
       return res.status(404).json({ error: 'Message not found' });
     }
 
+    if (!(await Chat.isParticipant(parseInt(message.chat_id), req.user.id))) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
     await Message.deleteForUser(parseInt(messageId), req.user.id);
     res.json({ success: true, messageId: parseInt(messageId) });
   } catch (error) {
@@ -263,6 +279,10 @@ exports.addReaction = async (req, res) => {
 
     if (!message) {
       return res.status(404).json({ error: 'Message not found' });
+    }
+
+    if (!(await Chat.isParticipant(parseInt(message.chat_id), req.user.id))) {
+      return res.status(404).json({ error: 'Chat not found' });
     }
 
     const reactions = await Message.addReaction(parseInt(messageId), req.user.id, emoji);
@@ -298,6 +318,14 @@ exports.pinMessage = async (req, res) => {
 exports.markAsRead = async (req, res) => {
   try {
     const { messageIds } = req.body;
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({ error: 'messageIds required' });
+    }
+
+    const first = await Message.findById(parseInt(messageIds[0]));
+    if (!first || !(await Chat.isParticipant(parseInt(first.chat_id), req.user.id))) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
 
     await Message.markAsRead(messageIds.map(id => parseInt(id)), req.user.id);
 

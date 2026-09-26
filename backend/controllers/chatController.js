@@ -167,6 +167,17 @@ exports.createChat = async (req, res) => {
         return res.status(400).json({ error: 'Valid participantId or userId is required' });
       }
 
+      if (targetUserId === parseInt(req.user.id)) {
+        return res.status(400).json({ error: 'You cannot create a chat with yourself' });
+      }
+      const targetExists = await User.findById(targetUserId);
+      if (!targetExists || targetExists.is_deleted) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (myBlocked.includes(targetUserId)) {
+        return res.status(403).json({ error: 'You have blocked this user' });
+      }
+
       const existingChat = await Chat.findPrivateChat(req.user.id, targetUserId);
 
       if (existingChat) {
@@ -263,12 +274,13 @@ exports.getMessages = async (req, res) => {
   try {
     const { chatId } = req.params;
     const { limit = 50, before } = req.query;
+    const parsedLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 100);
 
     if (!(await Chat.isParticipant(parseInt(chatId), req.user.id))) {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
-    const messages = (await Message.findByChatId(parseInt(chatId), parseInt(limit), before, req.user.id))
+    const messages = (await Message.findByChatId(parseInt(chatId), parsedLimit, before, req.user.id))
       .map(msg => Message.toJSON(msg));
 
     res.json({ messages });
@@ -304,16 +316,19 @@ exports.clearChat = async (req, res) => {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
-    await pool.query('DELETE FROM messages WHERE chat_id = $1', [parseInt(chatId)]);
-    await pool.query('UPDATE chats SET last_message_id = NULL WHERE id = $1', [parseInt(chatId)]);
+    // Delete-for-me semantics: only the requester loses the messages; the other side keeps them
+    await pool.query(
+      `INSERT INTO message_deletions (message_id, user_id)
+       SELECT id, $2 FROM messages WHERE chat_id = $1
+       ON CONFLICT (message_id, user_id) DO NOTHING`,
+      [parseInt(chatId), req.user.id]
+    );
 
     if (io) {
-      chat.participants.forEach(p => {
-        io.to(`user:${p._id}`).emit('chat:cleared', { chatId: parseInt(chatId) });
-      });
+      io.to(`user:${req.user.id}`).emit('chat:cleared', { chatId: parseInt(chatId) });
     }
 
-    res.json({ message: 'Chat cleared successfully' });
+    res.json({ message: 'Chat cleared for you' });
   } catch (error) {
     res.status(500).json({ error: 'Error clearing chat' });
   }
@@ -569,6 +584,18 @@ exports.acceptChatRequest = async (req, res) => {
       return res.status(403).json({ error: 'Cannot accept request from blocked user' });
     }
 
+    // Require an actual pending incoming request or pending message before accepting
+    const incomingFromOther = await Message.countPendingUnanswered(chat.id, otherId, req.user.id);
+    const pendingRequest = await pool.query(
+      `SELECT 1 FROM friend_requests
+       WHERE sender_id = $1 AND receiver_id = $2 AND status = 'pending'
+       LIMIT 1`,
+      [otherId, req.user.id]
+    );
+    if (incomingFromOther < 1 && pendingRequest.rows.length === 0) {
+      return res.status(400).json({ error: 'No pending request to accept' });
+    }
+
     // Ensure friendship in friend_requests table
     const existing = await pool.query(
       `SELECT * FROM friend_requests
@@ -701,6 +728,19 @@ exports.markChatAsRead = async (req, res) => {
     const chat = await Chat.findById(chatId);
     if (!chat || !(await Chat.isParticipant(chatId, req.user.id))) {
       return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    // Message-request privacy: reads are not recorded/notified until both users are friends
+    let canMarkRead = true;
+    if (chat.type === 'private') {
+      const other = chat.participants.find(p => parseInt(p._id || p.id) !== parseInt(req.user.id));
+      if (other) {
+        const isFriend = await FriendRequest.isFriend(req.user.id, parseInt(other._id || other.id));
+        canMarkRead = !!isFriend;
+      }
+    }
+    if (!canMarkRead) {
+      return res.json({ message: 'Read receipt withheld until friends', markedRead: false });
     }
 
     await Message.markChatAsRead(chatId, req.user.id);

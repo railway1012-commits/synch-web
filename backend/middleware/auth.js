@@ -10,7 +10,7 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const decoded = jwt.verify(token, config.JWT_SECRET);
+    const decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
     const user = await User.findById(decoded.userId);
 
     if (!user) {
@@ -40,7 +40,7 @@ const auth = async (req, res, next) => {
     }
 
     // Frozen Account Check
-    if (user.is_frozen && user.email?.toLowerCase() !== 'noreply.synch@gmail.com') {
+    if (user.is_frozen && user.role !== 'superadmin') {
       return res.status(403).json({
         error: 'Account Frozen',
         frozen: true,
@@ -52,7 +52,7 @@ const auth = async (req, res, next) => {
     try {
       const { pool } = require('../database');
       const maintRes = await pool.query("SELECT value FROM system_settings WHERE key = 'maintenance_mode'");
-      if (maintRes.rows[0]?.value === 'true' && user.email?.toLowerCase() !== 'noreply.synch@gmail.com') {
+      if (maintRes.rows[0]?.value === 'true' && user.role !== 'superadmin') {
         return res.status(503).json({
           error: 'Maintenance Mode',
           maintenance: true,
@@ -102,17 +102,15 @@ const socketAuth = async (socket, next) => {
     const token = socket.handshake.auth?.token || socket.handshake.query?.token;
 
     if (!token) {
-      // Allow guest socket connection for public system alerts and maintenance signals
-      socket.user = null;
-      return next();
+      // No guest sockets: every connection must be authenticated
+      return next(new Error('Authentication required'));
     }
 
-    const decoded = jwt.verify(token, config.JWT_SECRET);
+    const decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
     const user = await User.findById(decoded.userId);
 
     if (!user) {
-      socket.user = null;
-      return next();
+      return next(new Error('User not found'));
     }
 
     // Unbypassable Ban Check
@@ -129,12 +127,10 @@ const socketAuth = async (socket, next) => {
     // Verify session exists in database (has not been revoked)
     const session = await Session.findByToken(token);
     if (!session) {
-      socket.user = null;
-      return next();
+      return next(new Error('Session revoked'));
     }
 
     if (user.profile_complete === false) {
-      socket.user = null;
       return next(new Error('Profile Incomplete'));
     }
 
@@ -143,8 +139,7 @@ const socketAuth = async (socket, next) => {
     socket.token = token;
     next();
   } catch (error) {
-    socket.user = null;
-    next();
+    return next(new Error('Authentication failed'));
   }
 };
 
@@ -154,7 +149,7 @@ const adminAuth = async (req, res, next) => {
     if (!token) {
       return res.status(401).json({ error: 'Authentication required' });
     }
-    const decoded = jwt.verify(token, config.JWT_SECRET);
+    const decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
     const user = await User.findById(decoded.userId);
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
@@ -164,7 +159,7 @@ const adminAuth = async (req, res, next) => {
       return res.status(401).json({ error: 'Session revoked', sessionRevoked: true });
     }
 
-    const isAdmin = user.role === 'admin' || user.role === 'superadmin' || user.email?.toLowerCase() === 'noreply.synch@gmail.com';
+    const isAdmin = user.role === 'admin' || user.role === 'superadmin';
     if (!isAdmin) {
       return res.status(403).json({ error: 'Access denied: Admin only' });
     }
@@ -184,7 +179,7 @@ const requireRole = (...allowedRoles) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
     const userRole = req.user.role || 'user';
-    const isSuperAdmin = userRole === 'superadmin' || req.user.email?.toLowerCase() === 'noreply.synch@gmail.com';
+    const isSuperAdmin = userRole === 'superadmin';
     if (isSuperAdmin || allowedRoles.includes(userRole)) {
       return next();
     }

@@ -5,6 +5,31 @@ exports.setIO = (socketIO) => {
   io = socketIO;
 };
 
+exports.updateProfile = async (req, res) => {
+  try {
+    const { displayName, bio } = req.body || {};
+    const fields = {};
+    if (typeof displayName === 'string') {
+      const name = displayName.trim();
+      if (name.length > 40) return res.status(400).json({ error: 'Name must be 40 characters or less' });
+      fields.displayName = name;
+    }
+    if (typeof bio === 'string') {
+      const cleanBio = bio.trim();
+      if (cleanBio.length > 160) return res.status(400).json({ error: 'About must be 160 characters or less' });
+      fields.bio = cleanBio;
+    }
+    if (Object.keys(fields).length === 0) {
+      return res.status(400).json({ error: 'Nothing to update' });
+    }
+    const updated = await User.update(req.user.id, fields);
+    res.json({ user: User.toPublicJSON(updated, req.user.id) });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ error: 'Error updating profile' });
+  }
+};
+
 exports.getUsers = async (req, res) => {
   try {
     const { search } = req.query;
@@ -195,6 +220,12 @@ exports.updateAvatar = async (req, res) => {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    const upload = require('../middleware/upload');
+    if (!upload.validateUploadedFile(req.file.path, req.file.mimetype)) {
+      try { require('fs').unlinkSync(req.file.path); } catch (e) {}
+      return res.status(400).json({ error: 'File content does not match its declared type' });
+    }
+
     const avatarUrl = `/uploads/images/${req.file.filename}`;
     await User.updateAvatar(req.user.id, avatarUrl);
     const updatedUser = await User.findById(req.user.id);
@@ -207,7 +238,7 @@ exports.updateAvatar = async (req, res) => {
       });
     }
 
-    res.json({ avatar: avatarUrl, user: User.toPublicJSON(updatedUser) });
+    res.json({ avatar: avatarUrl, user: User.toPublicJSON(updatedUser, req.user.id) });
   } catch (error) {
     res.status(500).json({ error: 'Error updating avatar' });
   }

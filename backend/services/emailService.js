@@ -4,11 +4,11 @@ const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
 
 let transporter = null;
-let resendKey = process.env.RESEND_API_KEY || (process.env.EMAIL_PASS && process.env.EMAIL_PASS.startsWith('re_') ? process.env.EMAIL_PASS : null);
+let resendKey = process.env.RESEND_API_KEY || process.env.RESEND_KEY || (process.env.EMAIL_PASS && process.env.EMAIL_PASS.startsWith('re_') ? process.env.EMAIL_PASS : null);
 
 function initEmailService(config) {
-  if (config?.password?.startsWith('re_') || process.env.RESEND_API_KEY) {
-    resendKey = config?.password?.startsWith('re_') ? config.password : process.env.RESEND_API_KEY;
+  if (config?.password?.startsWith('re_') || process.env.RESEND_API_KEY || process.env.RESEND_KEY) {
+    resendKey = config?.password?.startsWith('re_') ? config.password : (process.env.RESEND_API_KEY || process.env.RESEND_KEY);
     console.log('Email service initialized with Resend API');
     return;
   }
@@ -16,17 +16,19 @@ function initEmailService(config) {
   const host = process.env.EMAIL_HOST || 'smtp.gmail.com';
   const port = parseInt(process.env.EMAIL_PORT) || 587;
   const secure = process.env.EMAIL_SECURE === 'true' || port === 465;
+  const user = process.env.EMAIL_USER || process.env.EMAIL_ADDRESS || '';
+  const pass = process.env.EMAIL_PASS || process.env.EMAIL_SECRET || '';
 
   transporter = nodemailer.createTransport({
     host: host,
     port: port,
     secure: secure,
     auth: {
-      user: config.email,
-      pass: config.password
+      user: user,
+      pass: pass
     },
     tls: {
-      rejectUnauthorized: false
+      rejectUnauthorized: true
     }
   });
 

@@ -168,20 +168,7 @@
           </div>
         </div>
 
-        <!-- Incoming Message Requests Banner Bar in Sidebar -->
-        <div class="message-requests-bar" id="messageRequestsBar" style="display: none;">
-          <div class="message-requests-bar-content">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              <line x1="12" y1="8" x2="12" y2="12"/>
-              <line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            <span id="messageRequestsBarText">Message Requests</span>
-          </div>
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="9 18 15 12 9 6"/>
-          </svg>
-        </div>
+        <!-- Incoming Message Requests Banner Bar in Sidebar (removed: requests live in the normal chat list) -->
 
         <!-- Notification Warning Banner -->
         <div class="notif-warning-banner" id="notifWarningBanner" style="display: none;" title="Click to enable notifications">
@@ -520,16 +507,15 @@
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent, #0084ff);">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                   </svg>
-                  <strong style="color: var(--text-primary); font-size: 14.5px;">Message Request</strong>
+                  <strong style="color: var(--text-primary); font-size: 14.5px;">Accept friend request to reply</strong>
                 </div>
                 <p style="margin: 4px 0 0; color: var(--text-secondary); font-size: 13px; max-width: 440px; text-align: center;">
                   <span id="incomingRequestSenderText">This user sent you a message request.</span>
                   They won't know you've seen it until you accept.
                 </p>
                 <div class="incoming-request-actions">
-                  <button type="button" class="btn btn-primary" id="acceptMessageRequestBtn">Accept</button>
-                  <button type="button" class="btn btn-secondary" id="declineMessageRequestBtn">Decline</button>
-                  <button type="button" class="btn btn-danger" id="blockMessageRequestBtn">Block</button>
+                  <button type="button" class="btn btn-primary" id="acceptMessageRequestBtn">Accept request</button>
+                  <button type="button" class="btn btn-secondary" id="declineMessageRequestBtn">Remove</button>
                 </div>
               </div>
             </div>

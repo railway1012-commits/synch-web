@@ -502,7 +502,7 @@
       triggerStepAnimation();
       stepEl.innerHTML = `
         <button type="button" class="btn-back" id="backBtn">&larr; Back</button>
-        <h2 class="auth-step-title">${flow.identifier}</h2>
+        <h2 class="auth-step-title">${escapeHtml(flow.identifier)}</h2>
         <p class="auth-subtext">Choose how you'd like to sign in.</p>
         ${(hasGoogle && !showingPassword) ? googleButtonHTML('Continue with Google') : ''}
         ${showingPassword ? `
@@ -606,7 +606,7 @@
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
         </div>
         <h2 class="auth-step-title">This account uses Google Sign-In</h2>
-        <p><strong>${flow.identifier}</strong> doesn't have a password set — it was created with Google. Continue with Google below to sign in.</p>
+        <p><strong>${escapeHtml(flow.identifier)}</strong> doesn't have a password set — it was created with Google. Continue with Google below to sign in.</p>
       </div>
       ${googleButtonHTML('Continue with Google')}
     `;
@@ -640,7 +640,7 @@
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
         </div>
         <h2 class="auth-step-title">That Google account doesn't match</h2>
-        <p>The Google account you picked isn't linked to <strong>${flow.identifier}</strong>. Please choose the correct account.</p>
+        <p>The Google account you picked isn't linked to <strong>${escapeHtml(flow.identifier)}</strong>. Please choose the correct account.</p>
       </div>
       ${googleButtonHTML('Try again')}
     `;
@@ -749,7 +749,7 @@
         </div>
         <h2 class="auth-step-title" style="margin-bottom: 8px; color: var(--text-primary);">Sign-in Approved</h2>
         <p style="color: var(--text-secondary); line-height: 1.5; margin-bottom: 24px;">
-          Your sign-in request was approved on your other device. Welcome back, <strong>${(user?.username || user?.name || 'User')}</strong>!
+          Your sign-in request was approved on your other device. Welcome back, <strong>${escapeHtml(user?.username || user?.name || 'User')}</strong>!
         </p>
 
         <button type="button" class="btn btn-primary" id="continueToChatsBtn" style="width: 100%;">

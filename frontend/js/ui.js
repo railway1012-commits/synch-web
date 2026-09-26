@@ -373,7 +373,7 @@ function sanitizeUrl(url) {
   if (!url) return '';
   try {
     const parsed = new URL(url, window.location.origin);
-    if (['http:', 'https:', 'data:'].includes(parsed.protocol)) {
+    if (['http:', 'https:'].includes(parsed.protocol)) {
       return parsed.href;
     }
   } catch (e) {}

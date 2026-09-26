@@ -494,15 +494,16 @@ function showSystemAnnouncement(data) {
   const existing = document.getElementById('sysAnnouncementBanner');
   if (existing) existing.remove();
 
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const banner = document.createElement('div');
   banner.id = 'sysAnnouncementBanner';
-  banner.className = `system-announcement-banner ${data.level || 'info'}`;
+  banner.className = `system-announcement-banner ${esc(data.level) || 'info'}`;
   banner.innerHTML = `
     <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
       <span style="font-size: 20px;">📢</span>
       <div>
-        <strong style="display: block; font-size: 13.5px; color: #ffffff; margin-bottom: 2px;">${data.title || 'System Announcement'}</strong>
-        <span style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.35;">${data.message}</span>
+        <strong style="display: block; font-size: 13.5px; color: #ffffff; margin-bottom: 2px;">${esc(data.title) || 'System Announcement'}</strong>
+        <span style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.35;">${esc(data.message)}</span>
       </div>
     </div>
     <button style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; padding: 4px;" onclick="this.parentElement.remove()">✕</button>

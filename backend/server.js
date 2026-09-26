@@ -6,7 +6,7 @@ const cors = require('cors');
 const path = require('path');
 
 const config = require('./config');
-const { initDatabase, User } = require('./database');
+const { initDatabase, User, Session } = require('./database');
 const jwt = require('jsonwebtoken');
 const { socketAuth, auth } = require('./middleware/auth');
 const socketHandler = require('./sockets/socketHandler');
@@ -16,24 +16,40 @@ const authRoutes = require('./routes/auth');
 const chatRoutes = require('./routes/chat');
 const messageRoutes = require('./routes/message');
 const userRoutes = require('./routes/user');
-const adminRoutes = require('./routes/admin');
 const authController = require('./controllers/authController');
 const chatController = require('./controllers/chatController');
 const messageController = require('./controllers/messageController');
 const userController = require('./controllers/userController');
-const adminController = require('./controllers/adminController');
 
 const app = express();
 app.set('trust proxy', 1);
+
+// CORS allowlist: only the app origins may make browser requests
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'https://synchapp.dev,https://www.synchapp.dev,http://localhost:3000,http://localhost:5173,http://localhost:8081')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
+    origin: (origin, callback) => {
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+      return callback(null, false);
+    },
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 });
 
-app.use(cors());
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -61,9 +77,8 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ── Android Release APK Download Route ─────────────────────────────────────────
 app.get(['/downloads/synch.apk', '/downloads/synch-release.apk', '/synch.apk', '/download/app'], (req, res) => {
-  const apkPath = path.join(__dirname, '../frontend/downloads/synch-release.apk');
-  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-  res.download(apkPath, 'synch-release.apk');
+  // APK download removed: distribute the app through the Play Store / signed releases instead.
+  res.status(410).json({ error: 'Download no longer available' });
 });
 
 app.use(express.static(path.join(__dirname, '../frontend'), {
@@ -82,7 +97,6 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/friends', userRoutes);
-app.use('/api/admin', adminRoutes);
 app.post('/api/reports', auth, userController.submitReport);
 app.post('/api/report', auth, userController.submitReport);
 
@@ -98,8 +112,11 @@ async function getAuthenticatedUser(req) {
   const token = getCookie(req, 'synch_token');
   if (!token || token === 'logged_out') return null;
   try {
-    const decoded = jwt.verify(token, config.JWT_SECRET);
+    const decoded = jwt.verify(token, config.JWT_SECRET, { algorithms: ['HS256'] });
     if (!decoded || !decoded.userId) return null;
+    // Cookie path must respect session revocation too
+    const session = await Session.findByToken(token);
+    if (!session) return null;
     const user = await User.findById(decoded.userId);
     return user || null;
   } catch (e) {
@@ -153,7 +170,8 @@ app.get('/settings', (req, res) => {
 });
 
 app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/admin.html'));
+  // Admin has been removed from the main app (separate admin service: admin.synch.app)
+  res.redirect(301, '/');
 });
 
 app.get('/forgot-password', (req, res) => {
@@ -195,7 +213,10 @@ app.use((err, req, res, next) => {
   }
   if (err) {
     console.error('Express Error:', err.message || err);
-    return res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+    if (err.status && err.status < 500) {
+      return res.status(err.status).json({ error: err.message || 'Request failed' });
+    }
+    return res.status(500).json({ error: 'Internal server error' });
   }
   next();
 });
@@ -215,7 +236,6 @@ authController.setIO(io);
 chatController.setIO(io);
 messageController.setIO(io);
 userController.setIO(io);
-adminController.setIO(io);
 
 const os = require('os');
 

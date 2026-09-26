@@ -58,41 +58,34 @@ module.exports = (io) => {
       status: 'online'
     });
 
-    socket.on('chat:join', (data) => {
-      const cId = parseInt(data?.chatId || data);
-      if (cId) {
-        socket.join(`chat:${cId}`);
-        socket.join(`chat:${String(cId)}`);
-      }
-    });
-
-    socket.on('chat:leave', (data) => {
-      const cId = parseInt(data?.chatId || data);
-      if (cId) {
-        socket.leave(`chat:${cId}`);
-        socket.leave(`chat:${String(cId)}`);
-      }
-    });
-
     socket.on('chat:read', async (data) => {
       try {
         const cId = parseInt(data?.chatId || data);
         if (!cId || isNaN(cId)) return;
+        const chat = await Chat.findById(cId);
+        if (!chat || !(await Chat.isParticipant(cId, user.id))) return;
+
+        // Message-request privacy: reads are NOT recorded/notified until both users are friends
+        let canMarkRead = true;
+        if (chat.type === 'private') {
+          const other = chat.participants.find(p => parseInt(p._id || p.id) !== parseInt(user.id));
+          if (other) {
+            const isFriend = await FriendRequest.isFriend(user.id, parseInt(other._id || other.id));
+            canMarkRead = !!isFriend;
+          }
+        }
+        if (!canMarkRead) return;
+
         await Message.markChatAsRead(cId, user.id);
         const readPayload = { chatId: cId, userId: user.id };
         io.to(`chat:${cId}`).emit('chat:read', readPayload);
-        io.to(`chat:${String(cId)}`).emit('chat:read', readPayload);
         io.to(`chat:${cId}`).emit('message:read', readPayload);
-        io.to(`chat:${String(cId)}`).emit('message:read', readPayload);
 
-        const chat = await Chat.findById(cId);
-        (chat?.participants || []).forEach(p => {
+        (chat.participants || []).forEach(p => {
           const pid = parseInt(p._id || p.id);
-          if (pid) {
+          if (pid && pid !== parseInt(user.id)) {
             io.to(`user:${pid}`).emit('chat:read', readPayload);
-            io.to(`user:${String(pid)}`).emit('chat:read', readPayload);
             io.to(`user:${pid}`).emit('message:read', readPayload);
-            io.to(`user:${String(pid)}`).emit('message:read', readPayload);
           }
         });
       } catch (e) {
@@ -227,12 +220,11 @@ module.exports = (io) => {
           return;
         }
 
-        // 1. Broadcast directly to chat room for instant real-time live delivery
+        // Broadcast to the chat room only (all participants are joined to it) — avoids duplicate delivery
         const chatIdNum = parseInt(chat.id);
         io.to(`chat:${chatIdNum}`).emit('message:new', messageJSON);
-        io.to(`chat:${String(chatIdNum)}`).emit('message:new', messageJSON);
 
-        // 2. Broadcast directly to other participants' personal rooms
+        // Personal-room notifications for other participants (different event, no duplication)
         const currentUserIdNum = parseInt(user.id || user._id);
         const seenPids = new Set();
         (chat.participants || []).forEach(participant => {
@@ -240,8 +232,6 @@ module.exports = (io) => {
           if (!pid || isNaN(pid) || seenPids.has(pid) || pid === currentUserIdNum) return;
           seenPids.add(pid);
 
-          io.to(`user:${pid}`).emit('message:new', messageJSON);
-          io.to(`user:${String(pid)}`).emit('message:new', messageJSON);
           const notifPayload = {
             message: messageJSON,
             chat: {
@@ -250,7 +240,6 @@ module.exports = (io) => {
             }
           };
           io.to(`user:${pid}`).emit('message:notification', notifPayload);
-          io.to(`user:${String(pid)}`).emit('message:notification', notifPayload);
         });
       } catch (error) {
         console.error('Socket message:send error:', error);
@@ -266,12 +255,14 @@ module.exports = (io) => {
         const message = await Message.findById(parseInt(messageId));
         if (!message || message.sender_id !== user.id) return;
 
+        const chat = await Chat.findById(parseInt(message.chat_id));
+        if (!chat || !(await Chat.isParticipant(chat.id, user.id))) return;
+
         const updated = await Message.update(parseInt(messageId), content);
         const messageJSON = Message.toJSON(updated);
 
         const chatIdNum = parseInt(message.chat_id);
         io.to(`chat:${chatIdNum}`).emit('message:edited', messageJSON);
-        io.to(`chat:${String(chatIdNum)}`).emit('message:edited', messageJSON);
       } catch (error) {
         socket.emit('error', { message: 'Error editing message' });
       }
@@ -283,6 +274,9 @@ module.exports = (io) => {
 
         const message = await Message.findById(parseInt(messageId));
         if (!message) return;
+
+        const chat = await Chat.findById(parseInt(message.chat_id));
+        if (!chat || !(await Chat.isParticipant(chat.id, user.id))) return;
 
         const chatIdNum = parseInt(message.chat_id);
         if (deleteForEveryone) {
@@ -331,6 +325,9 @@ module.exports = (io) => {
         const message = await Message.findById(parseInt(messageId));
         if (!message) return;
 
+        const chat = await Chat.findById(parseInt(message.chat_id));
+        if (!chat || !(await Chat.isParticipant(chat.id, user.id))) return;
+
         const reactions = await Message.addReaction(parseInt(messageId), user.id, emoji);
 
         const chatIdNum = parseInt(message.chat_id);
@@ -339,31 +336,32 @@ module.exports = (io) => {
           reactions
         };
         io.to(`chat:${chatIdNum}`).emit('message:reacted', reactPayload);
-        io.to(`chat:${String(chatIdNum)}`).emit('message:reacted', reactPayload);
       } catch (error) {
         socket.emit('error', { message: 'Error adding reaction' });
       }
     });
 
-    socket.on('typing:start', (data) => {
+    socket.on('typing:start', async (data) => {
       const cId = parseInt(data.chatId);
+      if (!cId || isNaN(cId)) return;
+      if (!(await Chat.isParticipant(cId, user.id))) return;
       const payload = {
         chatId: data.chatId,
         userId: user.id,
         username: user.username
       };
-      if (cId) socket.to(`chat:${cId}`).emit('typing:start', payload);
-      socket.to(`chat:${data.chatId}`).emit('typing:start', payload);
+      socket.to(`chat:${cId}`).emit('typing:start', payload);
     });
 
-    socket.on('typing:stop', (data) => {
+    socket.on('typing:stop', async (data) => {
       const cId = parseInt(data.chatId);
+      if (!cId || isNaN(cId)) return;
+      if (!(await Chat.isParticipant(cId, user.id))) return;
       const payload = {
         chatId: data.chatId,
         userId: user.id
       };
-      if (cId) socket.to(`chat:${cId}`).emit('typing:stop', payload);
-      socket.to(`chat:${data.chatId}`).emit('typing:stop', payload);
+      socket.to(`chat:${cId}`).emit('typing:stop', payload);
     });
 
     socket.on('message:read', async (data) => {
@@ -371,21 +369,30 @@ module.exports = (io) => {
         const { messageIds, chatId } = data;
         if (!messageIds || !messageIds.length) return;
 
+        const cId = parseInt(chatId);
+        if (!cId || isNaN(cId)) return;
+        const chat = await Chat.findById(cId);
+        if (!chat || !(await Chat.isParticipant(cId, user.id))) return;
+
+        // Message-request privacy: no read receipts until friends
+        if (chat.type === 'private') {
+          const other = chat.participants.find(p => parseInt(p._id || p.id) !== parseInt(user.id));
+          if (other) {
+            const isFriend = await FriendRequest.isFriend(user.id, parseInt(other._id || other.id));
+            if (!isFriend) return;
+          }
+        }
+
         await Message.markAsRead(messageIds.map(id => parseInt(id)), user.id);
 
-        const cId = parseInt(chatId);
         const readData = {
           messageIds,
-          chatId: cId || chatId,
+          chatId: cId,
           userId: user.id,
           readAt: new Date()
         };
 
-        if (cId) {
-          io.to(`chat:${cId}`).emit('message:read', readData);
-          io.to(`chat:${String(cId)}`).emit('message:read', readData);
-        }
-        io.to(`chat:${chatId}`).emit('message:read', readData);
+        io.to(`chat:${cId}`).emit('message:read', readData);
       } catch (error) {
         socket.emit('error', { message: 'Error marking messages as read' });
       }
@@ -395,8 +402,6 @@ module.exports = (io) => {
       const cId = parseInt(chatId);
       if (cId && (await Chat.isParticipant(cId, user.id))) {
         socket.join(`chat:${cId}`);
-        socket.join(`chat:${String(cId)}`);
-        socket.join(`chat:${chatId}`);
       }
     });
 
@@ -404,20 +409,6 @@ module.exports = (io) => {
       const cId = parseInt(chatId);
       if (cId) {
         socket.leave(`chat:${cId}`);
-        socket.leave(`chat:${String(cId)}`);
-      }
-      socket.leave(`chat:${chatId}`);
-    });
-
-    // Broadcast media messages (images, voice) to other users
-    socket.on('message:broadcast', (message) => {
-      if (message && message.chat) {
-        const cId = parseInt(message.chat);
-        if (cId) {
-          io.to(`chat:${cId}`).emit('message:new', message);
-          io.to(`chat:${String(cId)}`).emit('message:new', message);
-        }
-        io.to(`chat:${message.chat}`).emit('message:new', message);
       }
     });
 
@@ -492,6 +483,10 @@ module.exports = (io) => {
         const activeCall = activeCalls.get(callId);
         if (!activeCall) return;
 
+        // Only the callee may accept
+        const calleeId = parseInt(activeCall.calleeId);
+        if (calleeId !== parseInt(user.id || user._id)) return;
+
         activeCall.status = 'connected';
         activeCall.connectedAt = Date.now();
         if (typeof isVideo === 'boolean') activeCall.isVideo = isVideo;
@@ -511,6 +506,10 @@ module.exports = (io) => {
       try {
         const { toUserId, callId, isVideo, isScreenShare, isMuted } = data;
         if (!toUserId) return;
+        const activeCall = activeCalls.get(callId);
+        if (!activeCall) return;
+        const uid = parseInt(user.id || user._id);
+        if (parseInt(activeCall.callerId) !== uid && parseInt(activeCall.calleeId) !== uid) return;
         emitToUser(toUserId, 'call:mode_changed', {
           fromUserId: user.id,
           callId,
@@ -529,6 +528,10 @@ module.exports = (io) => {
         const activeCall = activeCalls.get(callId);
         if (!activeCall) return;
 
+        // Only the callee may reject
+        const calleeId = parseInt(activeCall.calleeId);
+        if (calleeId !== parseInt(user.id || user._id)) return;
+
         activeCalls.delete(callId);
 
         // Notify caller that callee rejected / is busy
@@ -546,6 +549,10 @@ module.exports = (io) => {
       try {
         const { toUserId, callId, signal } = data;
         if (!toUserId || !signal) return;
+        const activeCall = activeCalls.get(callId);
+        if (!activeCall) return;
+        const uid = parseInt(user.id || user._id);
+        if (parseInt(activeCall.callerId) !== uid && parseInt(activeCall.calleeId) !== uid) return;
 
         emitToUser(toUserId, 'call:signal', {
           fromUserId: user.id,
@@ -560,6 +567,9 @@ module.exports = (io) => {
     socket.on('call:end', (data) => {
       try {
         const { callId, toUserId } = data;
+        const activeCall = activeCalls.get(callId);
+        const uid = parseInt(user.id || user._id);
+        if (activeCall && parseInt(activeCall.callerId) !== uid && parseInt(activeCall.calleeId) !== uid) return;
         if (callId) activeCalls.delete(callId);
 
         const targetId = toUserId ? parseInt(toUserId) : null;
@@ -578,7 +588,7 @@ module.exports = (io) => {
 
     socket.on('disconnect', async () => {
       console.log(`User disconnected: ${user.username}`);
-      onlineUsers.delete(user.id);
+      onlineUsers.delete(parseInt(user.id || user._id));
 
       // Clean up any active call involving this user
       for (const [callId, call] of activeCalls.entries()) {

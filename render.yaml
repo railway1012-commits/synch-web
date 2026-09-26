@@ -4,14 +4,44 @@ services:
     runtime: node
     buildCommand: npm install
     startCommand: node backend/server.js
+    healthCheckPath: /
     envVars:
       - key: NODE_ENV
         value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      # Resend (recommended) — either key name works
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_KEY
+        sync: false
+      # SMTP fallback (Gmail app password)
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        sync: false
+      - key: EMAIL_SECURE
+        sync: false
       - key: EMAIL_USER
         sync: false
       - key: EMAIL_PASS
         sync: false
-      - key: DATABASE_URL
+      # Optional
+      - key: CORS_ORIGINS
         sync: false
-      - key: JWT_SECRET
-        generateValue: true
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: ENABLE_LOCAL_HTTPS
+        sync: false
+      - key: DB_SSL
+        sync: false
+      - key: JWT_EXPIRES_IN
+        sync: false

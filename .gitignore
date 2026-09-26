@@ -1,8 +1,16 @@
 node_modules/
 .env
 *.db
+*.db-wal
+*.db-shm
+*.sqlite
+uploads/*
+!uploads/.gitkeep
 backend/uploads/images/*
 backend/uploads/audio/*
 !backend/uploads/images/.gitkeep
 !backend/uploads/audio/.gitkeep
+frontend/downloads/*.apk
+npm
+synch@1.0.0
 .DS_Store

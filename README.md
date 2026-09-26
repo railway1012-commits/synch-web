@@ -46,7 +46,7 @@ A production-ready, full-stack real-time messaging application with modern UI an
 - Node.js
 - Express.js
 - Socket.io
-- MongoDB with Mongoose
+- PostgreSQL (pg driver)
 - JWT for authentication
 - bcryptjs for password hashing
 - Multer for file uploads
@@ -61,58 +61,58 @@ A production-ready, full-stack real-time messaging application with modern UI an
 
 ```
 synch/
-├── backend/
-│   ├── server.js           # Main server file
-│   ├── config.js           # Configuration
-│   ├── routes/
-│   │   ├── auth.js         # Authentication routes
-│   │   ├── chat.js         # Chat routes
-│   │   ├── message.js      # Message routes
-│   │   └── user.js         # User routes
-│   ├── controllers/
-│   │   ├── authController.js
-│   │   ├── chatController.js
-│   │   ├── messageController.js
-│   │   └── userController.js
-│   ├── models/
-│   │   ├── User.js
-│   │   ├── Message.js
-│   │   └── Chat.js
-│   ├── sockets/
-│   │   └── socketHandler.js
-│   ├── middleware/
-│   │   ├── auth.js
-│   │   └── upload.js
-│   └── uploads/
-│       ├── images/
-│       └── audio/
-├── frontend/
-│   ├── index.html          # Landing page
-│   ├── auth.html           # Authentication pages (login/signup)
-│   ├── chat.html           # Main chat & embedded settings interface
-│   ├── css/
-│   │   ├── main.css        # Global styles
-│   │   ├── auth.css        # Authentication pages
-│   │   ├── chat.css        # Chat interface
-│   │   └── settings.css    # Settings panel styling
-│   ├── js/
-│   │   ├── auth.js         # Authentication utilities
-│   │   ├── ui.js           # UI utilities
-│   │   ├── socket.js       # Socket.io client
-│   │   └── chat.js         # Chat & settings functionality
-│   └── assets/
-│       ├── icons/
-│       ├── images/
-│       └── audio/
-├── package.json
-└── README.md
+â”œâ”€â”€ backend/
+â”‚   â”œâ”€â”€ server.js           # Main server file
+â”‚   â”œâ”€â”€ config.js           # Configuration
+â”‚   â”œâ”€â”€ routes/
+â”‚   â”‚   â”œâ”€â”€ auth.js         # Authentication routes
+â”‚   â”‚   â”œâ”€â”€ chat.js         # Chat routes
+â”‚   â”‚   â”œâ”€â”€ message.js      # Message routes
+â”‚   â”‚   â””â”€â”€ user.js         # User routes
+â”‚   â”œâ”€â”€ controllers/
+â”‚   â”‚   â”œâ”€â”€ authController.js
+â”‚   â”‚   â”œâ”€â”€ chatController.js
+â”‚   â”‚   â”œâ”€â”€ messageController.js
+â”‚   â”‚   â””â”€â”€ userController.js
+â”‚   â”œâ”€â”€ models/
+â”‚   â”‚   â”œâ”€â”€ User.js
+â”‚   â”‚   â”œâ”€â”€ Message.js
+â”‚   â”‚   â””â”€â”€ Chat.js
+â”‚   â”œâ”€â”€ sockets/
+â”‚   â”‚   â””â”€â”€ socketHandler.js
+â”‚   â”œâ”€â”€ middleware/
+â”‚   â”‚   â”œâ”€â”€ auth.js
+â”‚   â”‚   â””â”€â”€ upload.js
+â”‚   â””â”€â”€ uploads/
+â”‚       â”œâ”€â”€ images/
+â”‚       â””â”€â”€ audio/
+â”œâ”€â”€ frontend/
+â”‚   â”œâ”€â”€ index.html          # Landing page
+â”‚   â”œâ”€â”€ auth.html           # Authentication pages (login/signup)
+â”‚   â”œâ”€â”€ chat.html           # Main chat & embedded settings interface
+â”‚   â”œâ”€â”€ css/
+â”‚   â”‚   â”œâ”€â”€ main.css        # Global styles
+â”‚   â”‚   â”œâ”€â”€ auth.css        # Authentication pages
+â”‚   â”‚   â”œâ”€â”€ chat.css        # Chat interface
+â”‚   â”‚   â””â”€â”€ settings.css    # Settings panel styling
+â”‚   â”œâ”€â”€ js/
+â”‚   â”‚   â”œâ”€â”€ auth.js         # Authentication utilities
+â”‚   â”‚   â”œâ”€â”€ ui.js           # UI utilities
+â”‚   â”‚   â”œâ”€â”€ socket.js       # Socket.io client
+â”‚   â”‚   â””â”€â”€ chat.js         # Chat & settings functionality
+â”‚   â””â”€â”€ assets/
+â”‚       â”œâ”€â”€ icons/
+â”‚       â”œâ”€â”€ images/
+â”‚       â””â”€â”€ audio/
+â”œâ”€â”€ package.json
+â””â”€â”€ README.md
 ```
 
 ## Installation
 
 ### Prerequisites
-- Node.js (v16 or higher)
-- MongoDB (local or Atlas)
+- Node.js (v18 or higher)
+- PostgreSQL (local or Railway)
 
 ### Steps
 
@@ -126,16 +126,16 @@ synch/
    npm install
    ```
 
-3. **Configure environment (optional):**
-   Create a `.env` file in the root directory:
+3. **Configure environment:**
+   Copy `.env.example` to `.env` and fill it in (JWT_SECRET is required):
    ```env
    PORT=3000
-   MONGODB_URI=mongodb://localhost:27017/synch
-   JWT_SECRET=your-secure-secret-key
+   DATABASE_URL=postgres://postgres:password@localhost:5432/synch_web
+   JWT_SECRET=your-long-random-secret
    ```
 
-4. **Start MongoDB:**
-   Make sure MongoDB is running on your system.
+4. **Start PostgreSQL:**
+   Make sure PostgreSQL is running and reachable via `DATABASE_URL`. Tables are created automatically on startup.
 
 5. **Start the server:**
    ```bash
@@ -192,7 +192,7 @@ synch/
 
 ## Socket Events
 
-### Client → Server
+### Client â†’ Server
 - `message:send` - Send new message
 - `message:edit` - Edit message
 - `message:delete` - Delete message
@@ -203,7 +203,7 @@ synch/
 - `chat:join` - Join chat room
 - `chat:leave` - Leave chat room
 
-### Server → Client
+### Server â†’ Client
 - `message:new` - New message received
 - `message:edited` - Message edited
 - `message:deleted` - Message deleted

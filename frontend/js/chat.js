@@ -194,7 +194,6 @@ const elements = {
   incomingRequestSenderText: document.getElementById('incomingRequestSenderText'),
   acceptMessageRequestBtn: document.getElementById('acceptMessageRequestBtn'),
   declineMessageRequestBtn: document.getElementById('declineMessageRequestBtn'),
-  blockMessageRequestBtn: document.getElementById('blockMessageRequestBtn'),
   sendBtn: document.getElementById('sendBtn'),
   typingIndicator: document.getElementById('typingIndicator'),
   typingText: document.getElementById('typingText'),
@@ -552,16 +551,6 @@ function renderChatList(searchQuery = '') {
     elements.requestsPillBadge.textContent = incomingRequestsCount > 99 ? '99+' : incomingRequestsCount;
     elements.requestsPillBadge.style.display = incomingRequestsCount > 0 ? 'inline-flex' : 'none';
   }
-  if (elements.messageRequestsBar) {
-    if (incomingRequestsCount > 0 && chatFilter !== 'requests') {
-      elements.messageRequestsBar.style.display = 'flex';
-      if (elements.messageRequestsBarText) {
-        elements.messageRequestsBarText.textContent = `Message Requests (${incomingRequestsCount})`;
-      }
-    } else {
-      elements.messageRequestsBar.style.display = 'none';
-    }
-  }
 
   const filteredChats = chats.filter(chat => {
     const isCurrent = currentChat && String(currentChat._id || currentChat.id) === String(chat._id || chat.id);
@@ -776,11 +765,9 @@ function updateChatRestrictions(chat) {
       }
       const acceptBtn = document.getElementById('acceptMessageRequestBtn');
       const declineBtn = document.getElementById('declineMessageRequestBtn');
-      const blockBtn = document.getElementById('blockMessageRequestBtn');
 
       if (acceptBtn) acceptBtn.onclick = () => window.acceptMessageRequest(chat);
       if (declineBtn) declineBtn.onclick = () => window.declineMessageRequest(chat);
-      if (blockBtn) blockBtn.onclick = () => window.blockMessageRequest(chat);
     }
   } else if (isMessageRequestWaiting) {
     if (inputWrapper) inputWrapper.style.display = 'none';

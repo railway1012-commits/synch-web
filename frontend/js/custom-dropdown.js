@@ -149,6 +149,7 @@ function createDobPicker(container, { onChange } = {}) {
     const count = daysInMonth(state.month, state.year);
     if (state.day && state.day > count) state.day = null;
     const dayOptions = Array.from({ length: count }, (_, i) => ({ value: i + 1, label: String(i + 1) }));
+    if (!dayDropdown) return; // guard: not yet initialized (TDZ safety)
     dayDropdown.destroy();
     dayDropdown = createDropdown(dayEl, {
       options: dayOptions,
@@ -162,12 +163,17 @@ function createDobPicker(container, { onChange } = {}) {
     if (onChange) onChange({ ...state });
   }
 
-  let dayDropdown = createDropdown(dayEl, {
+let dayDropdown = null;
+
+function initDayDropdown() {
+  dayDropdown = createDropdown(dayEl, {
     options: Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: String(i + 1) })),
     value: null,
     placeholder: 'Day',
     onChange: (v) => { state.day = Number(v); emit(); }
   });
+}
+initDayDropdown();
 
   const monthDropdown = createDropdown(monthEl, {
     options: months.map((m, i) => ({ value: i + 1, label: m })),

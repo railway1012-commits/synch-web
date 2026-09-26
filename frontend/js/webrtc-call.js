@@ -47,6 +47,11 @@
   let callStartTime = null;
   let isMuted = false;
   let isVideoEnabled = false;
+
+  // Escape user-controlled values before inserting into HTML attributes
+  function escapeAttr(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
   let isScreenSharing = false;
   let isSpeakerOn = true;
   let isMinimized = false;
@@ -447,7 +452,7 @@
     if (el.incomingType) el.incomingType.textContent = activeCall.isVideo ? 'Incoming Video Call...' : 'Incoming Audio Call...';
     if (el.incomingAvatar) {
       if (activeCall.remoteUserAvatar) {
-        el.incomingAvatar.innerHTML = `<img src="${activeCall.remoteUserAvatar}" alt="Avatar">`;
+        el.incomingAvatar.innerHTML = `<img src="${escapeAttr(activeCall.remoteUserAvatar)}" alt="Avatar">`;
       } else {
         el.incomingAvatar.textContent = (activeCall.remoteUserName[0] || 'U').toUpperCase();
       }
@@ -926,7 +931,7 @@
 
     if (el.avatar) {
       if (call.remoteUserAvatar) {
-        el.avatar.innerHTML = `<img src="${call.remoteUserAvatar}" alt="Avatar">`;
+        el.avatar.innerHTML = `<img src="${escapeAttr(call.remoteUserAvatar)}" alt="Avatar">`;
       } else {
         el.avatar.textContent = (call.remoteUserName[0] || 'U').toUpperCase();
       }

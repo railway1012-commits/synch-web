@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 const dbUrl = process.env.DATABASE_URL || 
   process.env.DATABASE_PUBLIC_URL || 
@@ -308,7 +309,7 @@ async function initDatabase() {
     await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS badge TEXT DEFAULT NULL;`);
     await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_notes TEXT DEFAULT NULL;`);
     await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user';`);
-    await safeQuery(`UPDATE users SET role = 'superadmin' WHERE email = 'noreply.synch@gmail.com';`);
+    await safeQuery(`ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS attempts INTEGER DEFAULT 0;`);
     await safeQuery(`CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);`);
     await safeQuery(`ALTER TABLE admin_audit_logs ADD COLUMN IF NOT EXISTS ip TEXT;`);
 
@@ -351,14 +352,16 @@ async function initDatabase() {
 }
 
 const VerificationCode = {
+  MAX_ATTEMPTS: 5,
   create: async (email, userId = null, type = 'signup') => {
     const cleanEmail = email ? email.toLowerCase().trim() : '';
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // Cryptographically secure 6-digit code
+    const code = crypto.randomInt(100000, 1000000).toString();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
     await pool.query('DELETE FROM verification_codes WHERE LOWER(TRIM(email)) = $1 AND type = $2 AND used = FALSE', [cleanEmail, type]);
     await pool.query(
-      'INSERT INTO verification_codes (user_id, email, code, type, expires_at) VALUES ($1, $2, $3, $4, $5)',
+      'INSERT INTO verification_codes (user_id, email, code, type, expires_at, attempts) VALUES ($1, $2, $3, $4, $5, 0)',
       [userId, cleanEmail, code, type, expiresAt]
     );
     return code;
@@ -370,23 +373,35 @@ const VerificationCode = {
 
     const result = await pool.query(
       `SELECT * FROM verification_codes
-       WHERE LOWER(TRIM(email)) = $1 AND TRIM(code) = $2 AND type = $3 AND used = FALSE
+       WHERE LOWER(TRIM(email)) = $1 AND type = $2 AND used = FALSE
        ORDER BY created_at DESC LIMIT 1`,
-      [cleanEmail, cleanCode, type]
+      [cleanEmail, type]
     );
 
-    if (result.rows.length > 0) {
-      const row = result.rows[0];
-      const expiry = new Date(row.expires_at).getTime();
-      if (expiry > Date.now() - 60000) {
-        await pool.query('UPDATE verification_codes SET used = TRUE WHERE id = $1', [row.id]);
-        return true;
-      } else {
-        console.warn(`Verification code for ${cleanEmail} expired (expired at ${row.expires_at}, current: ${new Date().toISOString()})`);
-      }
-    } else {
-      console.warn(`Verification code match failed for email: '${cleanEmail}', type: '${type}', code: '${cleanCode}'`);
+    if (result.rows.length === 0) return false;
+    const row = result.rows[0];
+
+    // Brute-force lockout: max 5 failed attempts per code
+    const attempts = parseInt(row.attempts || 0, 10);
+    if (attempts >= VerificationCode.MAX_ATTEMPTS) {
+      console.warn(`Verification code for ${cleanEmail} locked after ${attempts} failed attempts`);
+      return false;
     }
+
+    // Strict expiry (no grace window)
+    const expiry = new Date(row.expires_at).getTime();
+    if (expiry <= Date.now()) {
+      console.warn(`Verification code for ${cleanEmail} expired (expired at ${row.expires_at}, current: ${new Date().toISOString()})`);
+      return false;
+    }
+
+    if (String(row.code).trim() === cleanCode) {
+      await pool.query('UPDATE verification_codes SET used = TRUE WHERE id = $1', [row.id]);
+      return true;
+    }
+
+    await pool.query('UPDATE verification_codes SET attempts = attempts + 1 WHERE id = $1', [row.id]);
+    console.warn(`Verification code match failed for email: '${cleanEmail}', type: '${type}' (attempt ${attempts + 1}/${VerificationCode.MAX_ATTEMPTS})`);
     return false;
   }
 };
@@ -410,7 +425,7 @@ const User = {
     const hashedPassword = password ? bcrypt.hashSync(password, 12) : null;
     const cleanEmail = email ? email.toLowerCase().trim() : '';
     const finalUsername = username || generatePlaceholderUsername();
-    const userRole = (cleanEmail && cleanEmail === 'noreply.synch@gmail.com') ? 'superadmin' : (role || 'user');
+    const userRole = role || 'user';
     const result = await pool.query(
       `INSERT INTO users (username, email, password, email_verified, google_id, avatar, profile_complete, role)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
@@ -700,6 +715,12 @@ const User = {
     );
     await pool.query('DELETE FROM sessions WHERE user_id = $1', [id]);
     await pool.query('DELETE FROM verification_codes WHERE user_id = $1', [id]);
+    // Remove friendships and requests involving this user
+    await pool.query('DELETE FROM friend_requests WHERE sender_id = $1 OR receiver_id = $1', [id]);
+    // Remove the user from group chats (private history stays, sender is anonymized)
+    await pool.query('DELETE FROM chat_participants WHERE user_id = $1 AND chat_id IN (SELECT id FROM chats WHERE type != \'private\')', [id]);
+    // Purge IP history
+    await pool.query('DELETE FROM user_ip_history WHERE user_id = $1', [id]);
   },
 
   blockUser: async (userId, blockedId) => {
@@ -807,7 +828,9 @@ const User = {
     await pool.query('UPDATE users SET role = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [role, id]);
   },
 
-  toPublicJSON: (user) => {
+  // viewerId: the user viewing this JSON. Sensitive fields (email, dob, settings, 2FA flags)
+  // are included ONLY when the viewer is the owner. Every other caller gets the stripped shape.
+  toPublicJSON: (user, viewerId = null) => {
     if (!user) return null;
     if (user.is_deleted) {
       return {
@@ -821,21 +844,22 @@ const User = {
         isDeleted: true
       };
     }
+    const isOwner = viewerId != null && parseInt(viewerId) === parseInt(user.id);
     return {
       _id: user.id,
       username: user.username,
       displayName: user.display_name,
-      email: user.email,
+      email: isOwner ? user.email : undefined,
       avatar: user.avatar,
       status: user.status,
       lastSeen: user.last_seen,
       badge: user.badge || null,
-      role: user.role || (user.email?.toLowerCase() === 'noreply.synch@gmail.com' ? 'superadmin' : 'user'),
-      settings: user.settings,
-      twoFactorEnabled: !!user.two_factor_enabled,
-      dob: user.dob,
-      googleLinked: !!user.google_id,
-      hasPassword: !!user.password,
+      role: user.role || 'user',
+      settings: isOwner ? user.settings : undefined,
+      twoFactorEnabled: isOwner ? !!user.two_factor_enabled : undefined,
+      dob: isOwner ? user.dob : undefined,
+      googleLinked: isOwner ? !!user.google_id : undefined,
+      hasPassword: isOwner ? !!user.password : undefined,
       profileComplete: !!user.profile_complete,
       isDeleted: false
     };
@@ -1199,13 +1223,20 @@ const Message = {
     `;
 
     const uId = userId ? parseInt(userId) : null;
-    const deletionFilter = uId ? ` AND NOT EXISTS (SELECT 1 FROM message_deletions md WHERE md.message_id = m.id AND md.user_id = ${uId})` : '';
 
-    if (before) {
-      query = `${baseSelect} WHERE m.chat_id = $1${deletionFilter} AND m.created_at < $2 ORDER BY m.created_at DESC LIMIT $3`;
+    if (uId && !isNaN(uId)) {
+      if (before) {
+        query = `${baseSelect} WHERE m.chat_id = $1 AND NOT EXISTS (SELECT 1 FROM message_deletions md WHERE md.message_id = m.id AND md.user_id = $2) AND m.created_at < $3 ORDER BY m.created_at DESC LIMIT $4`;
+        params = [chatId, uId, before, limit];
+      } else {
+        query = `${baseSelect} WHERE m.chat_id = $1 AND NOT EXISTS (SELECT 1 FROM message_deletions md WHERE md.message_id = m.id AND md.user_id = $2) ORDER BY m.created_at DESC LIMIT $3`;
+        params = [chatId, uId, limit];
+      }
+    } else if (before) {
+      query = `${baseSelect} WHERE m.chat_id = $1 AND m.created_at < $2 ORDER BY m.created_at DESC LIMIT $3`;
       params = [chatId, before, limit];
     } else {
-      query = `${baseSelect} WHERE m.chat_id = $1${deletionFilter} ORDER BY m.created_at DESC LIMIT $2`;
+      query = `${baseSelect} WHERE m.chat_id = $1 ORDER BY m.created_at DESC LIMIT $2`;
       params = [chatId, limit];
     }
 
@@ -1355,13 +1386,14 @@ const Message = {
     const sId = parseInt(senderId);
     const rId = parseInt(recipientId);
     if (!cId || !sId || !rId || isNaN(cId) || isNaN(sId) || isNaN(rId)) return 0;
+    // Counts ALL messages (including deleted ones) so delete-for-everyone can't be used to
+    // bypass the 1-message intro limit, and a deleted reply still counts as a reply.
     const result = await pool.query(
       `SELECT COUNT(*)::int as count FROM messages
        WHERE chat_id = $1
          AND sender_id = $2
-         AND deleted = FALSE
          AND created_at > COALESCE(
-           (SELECT MAX(created_at) FROM messages WHERE chat_id = $1 AND sender_id = $3 AND deleted = FALSE),
+           (SELECT MAX(created_at) FROM messages WHERE chat_id = $1 AND sender_id = $3),
            '1970-01-01'::timestamp
          )`,
       [cId, sId, rId]

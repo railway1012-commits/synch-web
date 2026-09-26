@@ -1,11 +1,7 @@
-const CACHE_NAME = 'synch-v23';
+const CACHE_NAME = 'synch-v24';
+// Never cache HTML routes — they must always come from the server
+// (caching them can serve stale/redirect/authenticated pages).
 const STATIC_ASSETS = [
-  '/',
-  '/chat',
-  '/login',
-  '/forgot-password',
-  '/404',
-  '/401',
   '/css/main.css',
   '/css/chat.css',
   '/css/auth.css',
@@ -25,7 +21,11 @@ const STATIC_ASSETS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
+      return Promise.allSettled(
+        STATIC_ASSETS.map((asset) =>
+          cache.add(asset).catch(() => null)
+        )
+      );
     })
   );
   self.skipWaiting();
@@ -58,11 +58,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first strategy: always fetch the latest files when online, fall back to cache when offline
+  // Network-first strategy: always fetch the latest files when online, fall back to cache when offline.
+  // Only cache static assets — never HTML documents (avoids caching redirects/stale auth pages).
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (response && response.ok && event.request.url.startsWith('http')) {
+        const isDocument = event.request.mode === 'navigate' || event.request.destination === 'document';
+        if (response && response.ok && event.request.url.startsWith('http') && !isDocument) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, clone);

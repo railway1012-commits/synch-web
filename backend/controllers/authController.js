@@ -44,10 +44,31 @@ exports.getPublicConfig = async (req, res) => {
 };
 
 // Step 1 of the unified auth screen: user typed an email/username and hit Continue.
+const identifierCheckAttempts = new Map(); // identifier -> { count, resetAt }
+
+function checkIdentifierRateLimit(identifier) {
+  const key = String(identifier || '').toLowerCase().trim();
+  if (!key) return false;
+  const now = Date.now();
+  const entry = identifierCheckAttempts.get(key);
+  if (entry && entry.resetAt > now && entry.count >= 5) return false;
+  if (!entry || entry.resetAt <= now) {
+    identifierCheckAttempts.set(key, { count: 1, resetAt: now + 15 * 60 * 1000 });
+  } else {
+    entry.count += 1;
+  }
+  return true;
+}
+
 exports.checkIdentifier = async (req, res) => {
   try {
     const { identifier } = req.body;
     if (!identifier) return res.status(400).json({ error: 'Email or username is required' });
+
+    // Anti-enumeration: max 5 checks per identifier per 15 minutes
+    if (!checkIdentifierRateLimit(identifier)) {
+      return res.status(429).json({ error: 'Too many attempts. Please try again later.' });
+    }
 
     if (await isMaintenanceModeActive(identifier.trim())) {
       return res.status(503).json({
@@ -99,7 +120,8 @@ exports.checkIdentifier = async (req, res) => {
 function maskEmail(email) {
   if (!email || !email.includes('@')) return email;
   const [user, domain] = email.split('@');
-  if (user.length <= 2) return `${user}***@${domain}`;
+  if (user.length <= 1) return `*@${domain}`;
+  if (user.length <= 2) return `${user.substring(0, 1)}***@${domain}`;
   return `${user.substring(0, 2)}***${user.substring(user.length - 1)}@${domain}`;
 }
 
@@ -209,7 +231,7 @@ exports.verifySignupCode = async (req, res) => {
         success: true,
         verified: true,
         token,
-        user: User.toPublicJSON(existingEmailUser),
+        user: User.toPublicJSON(existingEmailUser, existingEmailUser.id),
         needsProfileSetup: true,
         hasPassword: !!existingEmailUser.password,
         message: 'Email verified. Please complete your profile.'
@@ -231,7 +253,7 @@ exports.verifySignupCode = async (req, res) => {
         accountCreated: true,
         message: 'Account created successfully',
         token,
-        user: User.toPublicJSON(user),
+        user: User.toPublicJSON(user, user.id),
         needsProfileSetup: true,
         hasPassword: true
       });
@@ -291,7 +313,7 @@ exports.completeSignup = async (req, res) => {
       accountCreated: true,
       message: 'Account created successfully',
       token,
-      user: User.toPublicJSON(user),
+      user: User.toPublicJSON(user, user.id),
       needsProfileSetup: true,
       hasPassword: true
     });
@@ -300,8 +322,6 @@ exports.completeSignup = async (req, res) => {
     res.status(500).json({ error: 'Error creating account' });
   }
 };
-
-exports.signup = exports.sendSignupCode;
 
 exports.resendCode = async (req, res) => {
   try {
@@ -592,7 +612,7 @@ exports.login = async (req, res) => {
     res.json({
       message: isComplete ? 'Login successful' : 'Please complete your profile setup',
       token,
-      user: User.toPublicJSON(updatedUser),
+      user: User.toPublicJSON(updatedUser, updatedUser.id),
       needsProfileSetup: !isComplete,
       hasPassword: !!updatedUser.password
     });
@@ -610,7 +630,11 @@ async function verifyGoogleCredential(credential) {
     idToken: credential,
     audience: clientId
   });
-  return ticket.getPayload();
+  const payload = ticket.getPayload();
+  if (payload && payload.email_verified !== true) {
+    throw new Error('Google account email is not verified');
+  }
+  return payload;
 }
 
 // Handles both "sign in with Google" and "sign up with Google" — one endpoint,
@@ -737,7 +761,7 @@ exports.googleAuth = async (req, res) => {
       return res.json({
         message: isComplete ? 'Login successful' : 'Please complete your profile setup',
         token,
-        user: User.toPublicJSON(updated),
+        user: User.toPublicJSON(updated, updated.id),
         isNewUser: false,
         needsProfileSetup: !isComplete,
         hasPassword: !!updated.password,
@@ -838,7 +862,7 @@ exports.googleAuth = async (req, res) => {
       return res.json({
         message: isComplete ? 'Login successful' : 'Please complete your profile setup',
         token,
-        user: User.toPublicJSON(updated),
+        user: User.toPublicJSON(updated, updated.id),
         isNewUser: false,
         justLinked: true,
         needsProfileSetup: !isComplete,
@@ -855,7 +879,7 @@ exports.googleAuth = async (req, res) => {
     res.status(201).json({
       message: 'Account created successfully',
       token,
-      user: User.toPublicJSON(newUser),
+      user: User.toPublicJSON(newUser, newUser.id),
       isNewUser: true,
       needsProfileSetup: true,
       hasPassword: false,
@@ -894,7 +918,7 @@ exports.linkGoogle = async (req, res) => {
     await User.setGoogleId(req.user.id, googleId);
     const updated = await User.findById(req.user.id);
 
-    res.json({ message: 'Google account connected', user: User.toPublicJSON(updated) });
+    res.json({ message: 'Google account connected', user: User.toPublicJSON(updated, updated.id) });
   } catch (error) {
     console.error('Link Google error:', error);
     res.status(500).json({ error: 'Error connecting Google account' });
@@ -916,7 +940,7 @@ exports.unlinkGoogle = async (req, res) => {
     await User.removeGoogleId(req.user.id);
     const updated = await User.findById(req.user.id);
 
-    res.json({ message: 'Google account disconnected', user: User.toPublicJSON(updated) });
+    res.json({ message: 'Google account disconnected', user: User.toPublicJSON(updated, updated.id) });
   } catch (error) {
     console.error('Unlink Google error:', error);
     res.status(500).json({ error: 'Error disconnecting Google account' });
@@ -938,7 +962,7 @@ exports.setPassword = async (req, res) => {
     await User.updatePassword(req.user.id, password);
     const updated = await User.findById(req.user.id);
 
-    res.json({ message: 'Password set successfully', user: User.toPublicJSON(updated) });
+    res.json({ message: 'Password set successfully', user: User.toPublicJSON(updated, updated.id) });
   } catch (error) {
     console.error('Set password error:', error);
     res.status(500).json({ error: 'Error setting password' });
@@ -970,7 +994,7 @@ exports.completeProfile = async (req, res) => {
     await User.markProfileComplete(req.user.id);
     const updated = await User.findById(req.user.id);
 
-    res.json({ message: 'Profile completed', user: User.toPublicJSON(updated) });
+    res.json({ message: 'Profile completed', user: User.toPublicJSON(updated, updated.id) });
   } catch (error) {
     console.error('Complete profile error:', error);
     res.status(500).json({ error: 'Error completing profile' });
@@ -1016,7 +1040,7 @@ exports.verifyLogin2FA = async (req, res) => {
     res.json({
       message: 'Login successful',
       token,
-      user: User.toPublicJSON(user)
+      user: User.toPublicJSON(user, user.id)
     });
   } catch (error) {
     console.error('2FA verification error:', error);
@@ -1037,7 +1061,7 @@ exports.logout = async (req, res) => {
 
 exports.getMe = async (req, res) => {
   try {
-    res.json({ user: User.toPublicJSON(req.user) });
+    res.json({ user: User.toPublicJSON(req.user, req.user.id) });
   } catch (error) {
     res.status(500).json({ error: 'Error fetching user' });
   }
@@ -1062,7 +1086,7 @@ exports.changePassword = async (req, res) => {
 
     res.json({
       message: req.user.password ? 'Password changed successfully' : 'Password set successfully',
-      user: User.toPublicJSON(updatedUser)
+      user: User.toPublicJSON(updatedUser, updatedUser.id)
     });
   } catch (error) {
     res.status(500).json({ error: 'Error changing password' });
@@ -1089,7 +1113,7 @@ exports.changeUsername = async (req, res) => {
       });
     }
 
-    res.json({ message: 'Username changed successfully', user: User.toPublicJSON(updatedUser) });
+    res.json({ message: 'Username changed successfully', user: User.toPublicJSON(updatedUser, updatedUser.id) });
   } catch (error) {
     res.status(500).json({ error: 'Error changing username' });
   }
@@ -1112,9 +1136,9 @@ exports.deleteAccount = async (req, res) => {
         return res.status(401).json({ error: 'Google account does not match this user' });
       }
     } else {
-      if (password && !User.comparePassword(req.user, password)) {
-        return res.status(401).json({ error: 'Password is incorrect' });
-      }
+      // Account has neither a password nor a linked Google account:
+      // require manual verification instead of allowing unverified deletion.
+      return res.status(400).json({ error: 'This account has no verification method. Contact support to delete it.' });
     }
 
     await User.delete(req.user.id);
@@ -1267,6 +1291,10 @@ exports.resetPassword = async (req, res) => {
       return res.status(400).json({ error: 'Session expired. Please start over.' });
     }
 
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
     const user = await User.findByEmail(email);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -1286,10 +1314,15 @@ exports.toggle2FA = async (req, res) => {
   try {
     const { enabled, password } = req.body;
 
-    if (password && req.user.password) {
-      if (!User.comparePassword(req.user, password)) {
-        return res.status(401).json({ error: 'Password is incorrect' });
-      }
+    // Password re-verification is ALWAYS required to change 2FA state.
+    if (!req.user.password) {
+      return res.status(400).json({ error: 'Your account has no password. Set one before changing 2FA settings.' });
+    }
+    if (!password || typeof password !== 'string') {
+      return res.status(401).json({ error: 'Password is required to change 2FA settings' });
+    }
+    if (!User.comparePassword(req.user, password)) {
+      return res.status(401).json({ error: 'Password is incorrect' });
     }
 
     await User.setTwoFactor(req.user.id, !!enabled);
@@ -1298,7 +1331,7 @@ exports.toggle2FA = async (req, res) => {
     res.json({
       message: enabled ? 'Two-factor authentication enabled' : 'Two-factor authentication disabled',
       twoFactorEnabled: !!enabled,
-      user: User.toPublicJSON(updatedUser)
+      user: User.toPublicJSON(updatedUser, updatedUser.id)
     });
   } catch (error) {
     console.error('Toggle 2FA error:', error);
@@ -1536,7 +1569,7 @@ exports.respondDevicePrompt = async (req, res) => {
       }
 
       challenge.token = token;
-      challenge.user = User.toPublicJSON(user);
+      challenge.user = User.toPublicJSON(user, user.id);
 
       return res.json({ success: true, message: 'Sign-in request approved!' });
     } else {
@@ -1756,7 +1789,7 @@ exports.approveQRLink = async (req, res) => {
     const newSession = await Session.create(req.user.id, webToken, finalDeviceName, clientIp);
     await User.updateStatus(req.user.id, 'online');
 
-    const publicUser = User.toPublicJSON(req.user);
+    const publicUser = User.toPublicJSON(req.user, req.user.id);
 
     sess.status = 'approved';
     sess.token = webToken;
