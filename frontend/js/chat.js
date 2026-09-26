@@ -2448,13 +2448,9 @@ document.getElementById('chatUserInfo')?.addEventListener('click', () => {
   const myId = currentUser ? String(currentUser._id || currentUser.id) : null;
   const p = currentChat.participants?.find(p => String(p._id || p.id) !== myId);
   if (!p) return;
-  const isFriend = currentChat.isFriend === true;
-  const isBlocked = currentChat.isBlocked === true || currentChat.isBlockedByMe === true;
-  populateProfileModal({
-    user: { ...p, isBlocked: isBlocked, isBlockedByMe: currentChat.isBlockedByMe },
-    isFriends: isFriend,
-    friendStatus: isBlocked ? 'blocked' : (isFriend ? 'friends' : 'none')
-  });
+  // Always fetch the FRESH user so friend/request status (e.g. pending_outgoing)
+  // reflects reality instead of the stale chat participant object.
+  previewUserProfile(p._id || p.id);
 });
 
 // Chat Header More Options Menu
