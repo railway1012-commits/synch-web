@@ -244,6 +244,15 @@
             <span>Download App</span>
           </a>
         </div>
+        <div style="margin-top: 18px; display: flex; justify-content: center;">
+          <button type="button" id="atwAudioBtn" class="btn btn-secondary btn-lg" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px;" onclick="toggleAtwAudio()">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="6 3 20 12 6 21 6 3"/>
+            </svg>
+            <span id="atwAudioLabel">Play Audio</span>
+          </button>
+        </div>
+        <audio id="atwAudio" src="/assets/atw-n.wav" preload="none"></audio>
       </div>
     </main>
 
@@ -300,6 +309,24 @@
   <script src="js/socket.js"></script>
   <script>
     try { document.getElementById('copyrightYear').textContent = new Date().getFullYear(); } catch (e) {}
+    function toggleAtwAudio() {
+      const a = document.getElementById('atwAudio');
+      const label = document.getElementById('atwAudioLabel');
+      if (!a || !label) return;
+      if (a.paused) {
+        a.currentTime = 0;
+        a.play().catch(function () {});
+        label.textContent = 'Stop';
+      } else {
+        a.pause();
+        a.currentTime = 0;
+        label.textContent = 'Play Audio';
+      }
+    }
+    document.getElementById('atwAudio')?.addEventListener('ended', function () {
+      const label = document.getElementById('atwAudioLabel');
+      if (label) label.textContent = 'Play Audio';
+    });
     const token = sessionStorage.getItem('synch_token') || localStorage.getItem('synch_token');
     if (token) {
       window.location.href = '/chat';
